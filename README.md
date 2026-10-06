@@ -79,3 +79,8 @@ LuminuxTests/     Unit tests (Swift Testing)
 
 - [Selawik](https://github.com/microsoft/Selawik) by Microsoft, licensed under the SIL Open Font License 1.1 (see `Luminux/Resources/Fonts/Selawik-OFL.txt`)
 - Icons are [SF Symbols](https://developer.apple.com/sf-symbols/)
+
+## License
+
+Luminux is released under the [MIT License](LICENSE). The bundled Selawik font keeps its own license, the SIL Open Font License 1.1.
+
