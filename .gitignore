@@ -4,3 +4,6 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 Luminux.xcodeproj/
+
+# Mockups and progress screenshots stay local
+Design/
