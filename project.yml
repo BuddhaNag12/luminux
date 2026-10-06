@@ -1,0 +1,97 @@
+name: Luminux
+options:
+  bundleIdPrefix: com.buddhanag
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    DEVELOPMENT_TEAM: C3ZASV2S6N
+    CODE_SIGN_STYLE: Automatic
+targets:
+  Luminux:
+    type: application
+    platform: iOS
+    sources:
+      - path: Luminux
+      - path: Shared
+    dependencies:
+      - target: LuminuxWidget
+    entitlements:
+      path: Luminux/Luminux.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.buddhanag.luminux]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.buddhanag.luminux
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: YES
+    info:
+      path: Luminux/Info.plist
+      properties:
+        CFBundleDisplayName: Luminux
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIAppFonts: [selawk.ttf, selawkl.ttf, selawksl.ttf, selawksb.ttf]
+        NSPhotoLibraryUsageDescription: Luminux shows the photos and videos on this iPhone and lets you favorite, organize and delete them. Nothing leaves your device.
+        PHPhotoLibraryPreventAutomaticLimitedAccessAlert: true
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleURLTypes:
+          - CFBundleURLName: com.buddhanag.luminux
+            CFBundleURLSchemes: [luminux]
+  LuminuxWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: LuminuxWidget
+      - path: Shared
+      - path: Luminux/Resources/Fonts
+        buildPhase: resources
+    entitlements:
+      path: LuminuxWidget/LuminuxWidget.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.buddhanag.luminux]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.buddhanag.luminux.widget
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: LuminuxWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Luminux
+        UIAppFonts: [selawksl.ttf]
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+  LuminuxTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: LuminuxTests
+    dependencies:
+      - target: Luminux
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.buddhanag.luminux.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Luminux.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Luminux
+        BUNDLE_LOADER: $(TEST_HOST)
+schemes:
+  Luminux:
+    build:
+      targets:
+        Luminux: all
+        LuminuxTests: [test]
+    test:
+      targets: [LuminuxTests]
