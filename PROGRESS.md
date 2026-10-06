@@ -7,7 +7,7 @@ Metro-style photo gallery for iOS over the system Photos library.
 - [x] Hub, collection pivot, viewer with app bar, select mode, settings, jump list (`Design/`)
 
 ## Phase 2: Scaffold ✅
-- [x] XcodeGen project (iOS 18+, Swift 6, MainActor default isolation), `.gitignore`, `git init` (nothing committed yet)
+- [x] XcodeGen project (iOS 18+, Swift 6, MainActor default isolation), `.gitignore`, `git init`
 - [x] Selawik font bundled with its OFL license (`Resources/Fonts/`)
 - [x] Metro theme: 20 accents, dark/light palette, metrics, Selawik type scale, outlined button style
 - [x] Photos permission flow (full, limited with "choose more", denied → Settings)
@@ -94,7 +94,7 @@ The Metro style itself is fine to ship; the risks are branding and two technical
 - **Next:** phase 6 polish. Continue "Feedback from device testing" (swipe-up details, select a whole month, the video controls and the staggered entrance are done; next: smoother animation, which needs Instruments on the iPhone 17 Pro, and details from you about the hub's date and albums tiles), then the "App Store readiness" list (start with the two code fixes: replace the `fileSize` key and add `PrivacyInfo.xcprivacy`), then do a Reduce Motion / VoiceOver / Dynamic Type pass and check the light theme on every screen. Make the app icon (a flat Metro tile glyph). Profile at 120 Hz on the iPhone 17 Pro and run the widget there (App Group provisioning).
 - **Build:** `export PATH=/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$PATH; export DEVELOPER_DIR=/Applications/Xcode-27.0.0.app/Contents/Developer`, then `xcodegen generate` and `xcodebuild -project Luminux.xcodeproj -scheme Luminux -destination "id=3FCA5EB5-E385-4214-8C67-CFF19B93810A" -derivedDataPath build test`.
 - **Run:** `xcrun simctl install/launch` on the iPhone 18 Pro sim; debug component gallery with `-gallery panorama|pivot`.
-- **Git:** initialized; nothing committed yet. Ask before the first commit (per phase? Co-Authored-By trailer?).
+- **Git:** https://github.com/BuddhaNag12/luminux (main). Commit as Buddha Nag with conventional messages and no co-author trailer.
 - **Skills:** apple-design (motion), ui-ux-pro-max (`references/pro-rules.md` pre-delivery checklist for phase 6).
 
 ## Log
@@ -116,4 +116,5 @@ The Metro style itself is fine to ship; the risks are branding and two technical
 - 2026-10-06: staggered feather entrance and exit done. The simulator test album "traveltravel" was deleted while testing the pop. 29 tests pass.
 - 2026-10-06: installed the Debug build with all four phase 6 feedback fixes on the iPhone 17 Pro and launched it, ready for device testing.
 - 2026-10-06: added the "App Store readiness" checklist (the Metro look is fine; the risks are branding, an undocumented `fileSize` key and the missing privacy manifest). The name "Luminux" isn't taken by a live app; reserve it in App Store Connect.
+- 2026-10-07: first commit pushed to github.com/BuddhaNag12/luminux (cf4b5c3, 83 files).
 
