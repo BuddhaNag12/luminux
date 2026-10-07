@@ -1,7 +1,8 @@
 # App Store privacy answers
 
-Luminux collects nothing itself. Since the news panel, Google's ad SDK (Google Mobile Ads 13.x) and its consent SDK
-(User Messaging Platform 3.x) do, so the App Store label is no longer "Data Not Collected". The answers below come
+Luminux collects nothing itself. Google's ad SDK (Google Mobile Ads 13.x), used for the "watch an ad to use it once"
+offers on Pro features, and its consent SDK (User Messaging Platform 3.x) do, so the App Store label is no longer
+"Data Not Collected". The answers below come
 from the privacy manifests inside the exact SDK versions in the app (`PrivacyInfo.xcprivacy` in each framework);
 check them again after an SDK update.
 
@@ -30,7 +31,8 @@ exactly that.
 **Not collected, so not declared:**
 - Photos and videos: read on the device, never uploaded.
 - Journal place names: only locations go to Apple Maps, Apple's own service.
-- News: the Luminux news server answers the request and keeps nothing (logs off). GNews only ever sees the server.
+- News: the panel is parked (no server address in the app). If it's switched on later, the Luminux news server
+  answers requests and keeps nothing, and GNews only ever sees the server, so nothing new to declare.
 - Purchases: handled by Apple.
 
 The public policy that matches these answers is [`privacy.md`](privacy.md).

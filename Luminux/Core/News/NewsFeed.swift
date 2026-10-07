@@ -20,7 +20,8 @@ nonisolated struct NewsResponse: Decodable, Sendable {
 }
 
 /// Headlines for the hub's news panel, fetched from Luminux's own proxy so the provider's key stays off the phone and
-/// the provider never sees who's reading.
+/// the provider never sees who's reading. The panel is parked: it appears only once `LuminuxNewsURL` is set and the
+/// proxy's switch is on.
 @Observable
 final class NewsFeed {
     enum Phase: Equatable {
@@ -44,27 +45,11 @@ final class NewsFeed {
     /// The proxy caches for this long too, so fetching sooner only returns the same headlines.
     static let refreshInterval: TimeInterval = 15 * 60
 
-    /// Without a proxy URL, debug and test builds show placeholder headlines so the panel can be checked; App Store
-    /// builds hide the panel.
-    var usesSamples: Bool {
-        #if DEBUG
-        endpoint == nil
-        #else
-        endpoint == nil && ProStore.isTestBuild
-        #endif
-    }
-
     init(defaults: UserDefaults = .standard, endpoint: URL? = NewsFeed.configuredEndpoint, session: URLSession = .shared) {
         self.defaults = defaults
         self.endpoint = endpoint
         self.session = session
-        isEnabled = defaults.bool(forKey: Self.enabledKey)
-        if usesSamples {
-            isEnabled = true
-            articles = Self.samples
-            attribution = "Sample headlines: the news feed isn't connected yet."
-            phase = .loaded
-        }
+        isEnabled = endpoint != nil && defaults.bool(forKey: Self.enabledKey)
     }
 
     static var configuredEndpoint: URL? {
@@ -99,14 +84,5 @@ final class NewsFeed {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(NewsResponse.self, from: data)
-    }
-
-    private static let samples: [NewsArticle] = (1...12).map { number in
-        NewsArticle(
-            title: "Sample headline \(number): real stories appear here once the news feed is connected",
-            source: "luminux",
-            url: URL(string: "https://example.com/\(number)")!,
-            publishedAt: Date.now.addingTimeInterval(Double(-number) * 47 * 60)
-        )
     }
 }

@@ -41,13 +41,13 @@ targets:
             *PRO_FREE_FOR_TESTING*) echo "error: archives must be built without PRO_FREE_FOR_TESTING"; fail=1 ;;
           esac
           plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
-          ids="$(/usr/libexec/PlistBuddy -c 'Print :GADApplicationIdentifier' "$plist") $(/usr/libexec/PlistBuddy -c 'Print :LuminuxNativeAdUnitID' "$plist")"
-          case "$ids" in
-            *ca-app-pub-3940256099942544*) echo "error: Google's test AdMob IDs are still in project.yml"; fail=1 ;;
-          esac
-          if [ -z "$(/usr/libexec/PlistBuddy -c 'Print :LuminuxNewsURL' "$plist" 2>/dev/null)" ]; then
-            echo "warning: LuminuxNewsURL is empty, so this build has no news panel or ads"
-          fi
+          read_key() { /usr/libexec/PlistBuddy -c "Print :$1" "$plist" 2>/dev/null; }
+          for key in GADApplicationIdentifier LuminuxRewardedAdUnitID; do
+            case "$(read_key $key)" in
+              "") echo "error: $key is empty in project.yml"; fail=1 ;;
+              *ca-app-pub-3940256099942544*) echo "error: $key is still Google's test ID in project.yml"; fail=1 ;;
+            esac
+          done
           exit $fail
         inputFiles:
           - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
@@ -81,8 +81,10 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.buddhanag.luminux
             CFBundleURLSchemes: [luminux]
-        # The Luminux AdMob app and its native ad unit. Debug and test builds use Google's test unit instead (NewsAds).
+        # The Luminux AdMob app and its ad units. Debug and test builds use Google's test units instead (AdConsent).
         GADApplicationIdentifier: ca-app-pub-7154730975495885~4556038621
+        LuminuxRewardedAdUnitID: ""
+        # For the parked news panel.
         LuminuxNativeAdUnitID: ca-app-pub-7154730975495885/5809410542
         # The news proxy (Server/news-worker). Empty shows sample headlines in debug and test builds only.
         LuminuxNewsURL: ""

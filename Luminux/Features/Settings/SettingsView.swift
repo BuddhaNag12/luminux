@@ -4,7 +4,7 @@ struct SettingsView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ProStore.self) private var store
     @Environment(Navigator.self) private var navigator
-    @Environment(NewsAds.self) private var ads
+    @Environment(AdConsent.self) private var adConsent
     @Environment(\.metro) private var metro
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
@@ -141,8 +141,8 @@ struct SettingsView: View {
                 .metroFeather(row: 13)
                 .padding(.bottom, 28)
 
-                if ads.needsPrivacyOptions && !store.isUnlocked {
-                    Button("ad privacy choices") { Task { await ads.presentPrivacyOptions() } }
+                if adConsent.needsPrivacyOptions && !store.isUnlocked {
+                    Button("ad privacy choices") { Task { await adConsent.presentPrivacyOptions() } }
                         .buttonStyle(.metro)
                         .metroFeather(row: 14)
                         .padding(.bottom, 12)
@@ -158,6 +158,9 @@ struct SettingsView: View {
         }
         .foregroundStyle(metro.foreground)
         .background(metro.background)
+        .task {
+            if !store.isUnlocked { await adConsent.refreshPrivacyOptions() }
+        }
     }
 
     /// Opens the colour picker for any accent; shows the custom colour once one is picked.

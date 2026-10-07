@@ -18,7 +18,7 @@ struct ProPitch: View {
     }
 
     private let perks = [
-        Perk(glyph: "newspaper", title: "no ads", detail: "Hides the news panel and its ads."),
+        Perk(glyph: "play.slash", title: "no ads", detail: "Use every feature without watching an ad."),
         Perk(glyph: "paintpalette", title: "any accent colour", detail: "Pick your own accent, beyond the classic six."),
         Perk(glyph: "rectangle.split.2x1", title: "wide live tiles", detail: "Medium and large photo tiles for the home screen."),
         Perk(glyph: "play.rectangle", title: "slideshow", detail: "A slow pan and zoom through any collection."),
@@ -95,12 +95,22 @@ struct ProPitch: View {
     }
 }
 
+/// A locked feature the Pro page offers to unlock once for a rewarded ad.
+struct ProTrial {
+    /// The heading, e.g. "play a slideshow once".
+    let title: String
+    let onEarned: () -> Void
+}
+
 /// The Pro page, pushed from settings and the widget, or shown over the viewer.
 struct ProView: View {
+    /// Offered above the purchase when the page opens from a locked feature.
+    var trial: ProTrial?
     /// Closes the page when it's shown over the viewer; a pushed page goes back with the usual swipe.
     var onClose: (() -> Void)?
 
     @Environment(ProStore.self) private var store
+    @Environment(RewardedAds.self) private var rewardedAds
     @Environment(\.metro) private var metro
 
     var body: some View {
@@ -114,7 +124,13 @@ struct ProView: View {
                     .metroFeather(row: 0)
                     .padding(.bottom, 24)
 
-                ProPitch(firstRow: 1)
+                if let trial, !store.isUnlocked {
+                    tryOnce(trial)
+                        .metroFeather(row: 1)
+                        .padding(.bottom, 32)
+                }
+
+                ProPitch(firstRow: trial == nil ? 1 : 2)
 
                 if let onClose {
                     Button(store.isUnlocked ? "done" : "not now", action: onClose)
@@ -129,5 +145,33 @@ struct ProView: View {
         .scrollIndicators(.hidden)
         .foregroundStyle(metro.foreground)
         .background(metro.background)
+        .task {
+            guard trial != nil, !store.isUnlocked else { return }
+            rewardedAds.clearMessage()
+            await rewardedAds.preload()
+        }
+    }
+
+    private func tryOnce(_ trial: ProTrial) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(trial.title).font(.metro(20, .semilight))
+            Text("Watch a short ad to use it now, or unlock Pro below and never see one.")
+                .font(.metroCaption)
+                .foregroundStyle(metro.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(rewardedAds.isLoading ? "loading ad…" : "watch an ad") {
+                Task {
+                    if await rewardedAds.watch() { trial.onEarned() }
+                }
+            }
+            .buttonStyle(.metro)
+            .disabled(rewardedAds.isLoading)
+            if let message = rewardedAds.message {
+                Text(message)
+                    .font(.metroCaption)
+                    .foregroundStyle(metro.accentColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 }

@@ -8,7 +8,16 @@ struct LuminuxApp: App {
     @State private var store = ProStore()
     @State private var journal = Journal()
     @State private var news = NewsFeed()
-    @State private var newsAds = NewsAds()
+    @State private var adConsent: AdConsent
+    @State private var newsAds: NewsAds
+    @State private var rewardedAds: RewardedAds
+
+    init() {
+        let consent = AdConsent()
+        _adConsent = State(initialValue: consent)
+        _newsAds = State(initialValue: NewsAds(consent: consent))
+        _rewardedAds = State(initialValue: RewardedAds(consent: consent))
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -19,7 +28,9 @@ struct LuminuxApp: App {
                 .environment(store)
                 .environment(journal)
                 .environment(news)
+                .environment(adConsent)
                 .environment(newsAds)
+                .environment(rewardedAds)
                 .environment(\.metro, settings.palette)
                 .tint(settings.accent.color)
                 .preferredColorScheme(settings.theme.colorScheme)

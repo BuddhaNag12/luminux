@@ -61,13 +61,15 @@ struct NewsFeedTests {
         #expect(feed.articles[1].image == URL(string: "https://example.com/2.jpg"))
     }
 
-    @Test func showsSampleHeadlinesWithoutAProxyInDebugBuilds() {
-        let feed = NewsFeed(defaults: freshDefaults(), endpoint: nil)
+    @Test func staysHiddenWithoutAProxy() async {
+        let defaults = freshDefaults()
+        defaults.set(true, forKey: "newsEnabled")
+        let feed = NewsFeed(defaults: defaults, endpoint: nil)
 
-        #expect(feed.usesSamples)
-        #expect(feed.isEnabled)
-        #expect(!feed.articles.isEmpty)
-        #expect(feed.phase == .loaded)
+        await feed.refresh()
+
+        #expect(!feed.isEnabled)
+        #expect(feed.articles.isEmpty)
     }
 
     @Test func loadsHeadlinesAndRemembersTheSwitch() async {

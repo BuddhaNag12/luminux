@@ -2,7 +2,7 @@
 
 _Effective 8 October 2026_
 
-Luminux is a photo gallery for the photos and videos on your iPhone. Your photos never leave your iPhone. The app has no account. What leaves the device is the place lookups you can turn off, the news headlines, and what the ads in the news panel need. With Luminux Pro there's no news panel and no ads.
+Luminux is a photo gallery for the photos and videos on your iPhone. Your photos never leave your iPhone. The app has no account. What leaves the device is the place lookups you can turn off, and what an ad needs, only when you choose to watch one.
 
 ## Your photos and videos
 
@@ -15,13 +15,11 @@ Luminux is a photo gallery for the photos and videos on your iPhone. Your photos
 
 To title trips like "a day in goa", Luminux sends the locations of photos taken away from home to Apple Maps and gets back place names. Only the locations are sent, never the photos, and the names are kept on your iPhone. Apple handles these requests under [Apple's privacy policy](https://www.apple.com/legal/privacy/). You can turn this off in Settings → "name places in the journal".
 
-## News
-
-Without Luminux Pro, the home screen has a news panel to the left of your photos. Its headlines come from [GNews](https://gnews.io) through Luminux's own server, hosted by [Cloudflare](https://www.cloudflare.com/privacypolicy/). When the app asks for headlines, the request includes technical details such as your IP address, which the server uses only to pick your country's edition. We keep no logs and nothing about you; GNews never receives your request. Stories open in the publisher's website, which has its own privacy policy.
-
 ## Ads
 
-The news panel shows ads from Google AdMob. Google's Mobile Ads SDK starts only the first time you open the news panel, so if you never open it, or you have Luminux Pro, it never runs. Luminux always asks for non-personalised ads and never asks to track you, so the advertising identifier (IDFA) is never shared.
+Slideshow, editing and rotating are part of Luminux Pro. Without Pro, you can use one of them once by watching a short ad, or unlock Pro for good with a one-time purchase. Ads only appear when you choose to watch one.
+
+Ads are provided by Google AdMob. Google's Mobile Ads SDK starts only when you first tap "watch an ad", so if you never do, or you have Luminux Pro, it never runs. Luminux always asks for non-personalised ads and never asks to track you, so the advertising identifier (IDFA) is never shared.
 
 When an ad loads, Google's Mobile Ads SDK collects:
 
@@ -35,7 +33,7 @@ Google uses this to show and measure ads, to prevent fraud and to improve its se
 **Your choices**
 
 - **Consent in the EU, UK and similar regions.** Where the law requires it, Google's consent form asks for your choices before any ad loads. You can change them later in Luminux under Settings → ad privacy choices.
-- **No ads at all.** The one-time Luminux Pro purchase removes the news panel and its ads.
+- **No ads at all.** With the one-time Luminux Pro purchase, every feature works without an ad.
 
 ## Purchases
 

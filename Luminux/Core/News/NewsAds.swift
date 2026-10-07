@@ -1,21 +1,14 @@
 import GoogleMobileAds
 import Observation
 import UIKit
-import UserMessagingPlatform
 
-/// Native ads for the news panel. Nothing here runs until the panel is first shown, so Pro users and people who never
-/// swipe to the news never meet Google's SDK or its consent form.
-///
-/// Ads are always non-personalised and the app never asks to track, so the only prompt anyone sees is the consent
-/// form Google requires in the EEA, the UK and Switzerland.
+/// Native ads for the news panel, loaded the first time the panel is shown.
 @Observable
 final class NewsAds {
     private(set) var ads: [NativeAd] = []
-    /// True where the law asks for a way to change the consent later; settings then shows "ad privacy choices".
-    private(set) var needsPrivacyOptions = false
 
+    @ObservationIgnored private let consent: AdConsent
     @ObservationIgnored private var isPreparing = false
-    @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var loadedAt: Date?
     @ObservationIgnored private var loader: NativeAdBatchLoader?
 
@@ -25,20 +18,12 @@ final class NewsAds {
     /// Google expires native ads after an hour.
     private static let adLifetime: TimeInterval = 55 * 60
 
-    static let testAdUnitID = "ca-app-pub-3940256099942544/3986624511"
-
-    /// The real ad unit only in App Store builds: AdMob suspends accounts whose owner sees or taps their own live ads,
-    /// so debug builds and test installs on the phone get Google's test ads.
     static var adUnitID: String {
-        #if DEBUG
-        testAdUnitID
-        #else
-        ProStore.isTestBuild ? testAdUnitID : configuredAdUnitID ?? testAdUnitID
-        #endif
+        AdConsent.adUnitID(infoKey: "LuminuxNativeAdUnitID", test: "ca-app-pub-3940256099942544/3986624511")
     }
 
-    private static var configuredAdUnitID: String? {
-        (Bundle.main.object(forInfoDictionaryKey: "LuminuxNativeAdUnitID") as? String).flatMap { $0.isEmpty ? nil : $0 }
+    init(consent: AdConsent) {
+        self.consent = consent
     }
 
     /// Asks for consent where it's required, starts the SDK and loads fresh ads if the current ones are old.
@@ -48,21 +33,7 @@ final class NewsAds {
         isPreparing = true
         defer { isPreparing = false }
 
-        let consent = ConsentInformation.shared
-        do {
-            try await consent.requestConsentInfoUpdate(with: RequestParameters())
-            try await ConsentForm.loadAndPresentIfRequired(from: UIApplication.shared.topViewController)
-        } catch {
-            // No form configured yet, or offline: Google still answers `canRequestAds` from what it last knew.
-        }
-        needsPrivacyOptions = consent.privacyOptionsRequirementStatus == .required
-        guard consent.canRequestAds else { return }
-
-        if !hasStarted {
-            hasStarted = true
-            MobileAds.shared.isApplicationMuted = true
-            await MobileAds.shared.start()
-        }
+        guard await consent.prepare() else { return }
         let count = min(max(headlineCount / Self.headlinesPerAd, 1), Self.maxAds)
         loader = NativeAdBatchLoader(adUnitID: Self.adUnitID, count: count) { [weak self] fresh in
             guard let self else { return }
@@ -73,10 +44,6 @@ final class NewsAds {
             }
         }
         loader?.load(from: UIApplication.shared.topViewController)
-    }
-
-    func presentPrivacyOptions() async {
-        try? await ConsentForm.presentPrivacyOptionsForm(from: UIApplication.shared.topViewController)
     }
 
     /// Lets go of the ads once Pro is bought.
@@ -108,15 +75,7 @@ private final class NativeAdBatchLoader: NSObject, NativeAdLoaderDelegate {
         let loader = AdLoader(adUnitID: adUnitID, rootViewController: rootViewController, adTypes: [.native], options: [multiple, media])
         loader.delegate = self
         adLoader = loader
-        loader.load(Self.nonPersonalisedRequest())
-    }
-
-    private static func nonPersonalisedRequest() -> Request {
-        let request = Request()
-        let extras = Extras()
-        extras.additionalParameters = ["npa": "1"]
-        request.register(extras)
-        return request
+        loader.load(AdConsent.nonPersonalisedRequest())
     }
 
     func adLoader(_ adLoader: AdLoader, didReceive nativeAd: NativeAd) {

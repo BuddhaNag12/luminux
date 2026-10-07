@@ -41,6 +41,8 @@
 	<string>ca-app-pub-7154730975495885/5809410542</string>
 	<key>LuminuxNewsURL</key>
 	<string></string>
+	<key>LuminuxRewardedAdUnitID</key>
+	<string></string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Luminux shows the photos and videos on this iPhone, organizes them into a journal, and lets you favorite and delete them. Your photos never leave your device.</string>
 	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>

@@ -18,7 +18,9 @@ struct ViewerView: View {
     @State private var isZoomed = false
     @State private var editing: AssetItem?
     @State private var showsSlideshow = false
-    @State private var showsPro = false
+    @State private var proOffer: ProOffer?
+    /// Runs once the Pro page has closed, after an ad was watched or Pro bought; covers can't overlap.
+    @State private var unlockedAction: (() -> Void)?
     @State private var dismissDrag: CGFloat = 0
     /// How much of the details panel is showing; the panel is open when this rests at `panelHeight`.
     @State private var detailsLift: CGFloat = 0
@@ -140,8 +142,17 @@ struct ViewerView: View {
         .fullScreenCover(isPresented: $showsSlideshow) {
             SlideshowView(source: request.source, startIndex: index ?? 0)
         }
-        .fullScreenCover(isPresented: $showsPro) {
-            ProView { showsPro = false }
+        .fullScreenCover(item: $proOffer, onDismiss: {
+            unlockedAction?()
+            unlockedAction = nil
+        }) { offer in
+            ProView(trial: ProTrial(title: offer.title) {
+                unlockedAction = offer.action
+                proOffer = nil
+            }) {
+                if store.isUnlocked { unlockedAction = offer.action }
+                proOffer = nil
+            }
         }
     }
 
@@ -211,7 +222,7 @@ struct ViewerView: View {
         ]
         if asset.supportsLuminuxEdits {
             buttons.append(AppBarButton(title: "edit", systemImage: "crop.rotate") {
-                withPro { editing = AssetItem(asset: asset) }
+                withPro("edit this photo once") { editing = AssetItem(asset: asset) }
             })
         }
         buttons.append(AppBarButton(title: "delete", systemImage: "trash") {
@@ -220,12 +231,12 @@ struct ViewerView: View {
         return buttons
     }
 
-    /// Runs a Pro feature, or shows what Pro adds when it isn't unlocked yet.
-    private func withPro(_ action: () -> Void) {
+    /// Runs a Pro feature, or offers it once for an ad next to what Pro adds.
+    private func withPro(_ trialTitle: String, _ action: @escaping () -> Void) {
         if store.isUnlocked {
             action()
         } else {
-            showsPro = true
+            proOffer = ProOffer(title: trialTitle, action: action)
         }
     }
 
@@ -233,11 +244,11 @@ struct ViewerView: View {
         var items: [AppBarMenuItem] = []
         if asset.supportsLuminuxEdits {
             items.append(AppBarMenuItem(title: "rotate") {
-                withPro { Task { try? await library.applyEdit(EditRecipe(quarterTurns: 1), to: asset) } }
+                withPro("rotate this photo once") { Task { try? await library.applyEdit(EditRecipe(quarterTurns: 1), to: asset) } }
             })
         }
         items.append(AppBarMenuItem(title: "add to album") { addToAlbum = AddToAlbumRequest(assets: [asset]) })
-        items.append(AppBarMenuItem(title: "slideshow") { withPro { showsSlideshow = true } })
+        items.append(AppBarMenuItem(title: "slideshow") { withPro("play a slideshow once") { showsSlideshow = true } })
         items.append(AppBarMenuItem(title: "details") { setDetails(open: true) })
         if asset.hasAdjustments && asset.canPerform(.content) {
             items.append(AppBarMenuItem(title: "revert to original") {
@@ -369,4 +380,10 @@ private struct VideoPage: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(asset.spokenDescription)
     }
+}
+
+private struct ProOffer: Identifiable {
+    let id = UUID()
+    let title: String
+    let action: () -> Void
 }
