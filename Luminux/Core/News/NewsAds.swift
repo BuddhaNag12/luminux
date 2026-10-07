@@ -25,10 +25,20 @@ final class NewsAds {
     /// Google expires native ads after an hour.
     private static let adLifetime: TimeInterval = 55 * 60
 
-    /// The ad unit from AdMob, or Google's test unit until the real one is set in `project.yml`.
+    static let testAdUnitID = "ca-app-pub-3940256099942544/3986624511"
+
+    /// The real ad unit only in App Store builds: AdMob suspends accounts whose owner sees or taps their own live ads,
+    /// so debug builds and test installs on the phone get Google's test ads.
     static var adUnitID: String {
+        #if DEBUG
+        testAdUnitID
+        #else
+        ProStore.isTestBuild ? testAdUnitID : configuredAdUnitID ?? testAdUnitID
+        #endif
+    }
+
+    private static var configuredAdUnitID: String? {
         (Bundle.main.object(forInfoDictionaryKey: "LuminuxNativeAdUnitID") as? String).flatMap { $0.isEmpty ? nil : $0 }
-            ?? "ca-app-pub-3940256099942544/3986624511"
     }
 
     /// Asks for consent where it's required, starts the SDK and loads fresh ads if the current ones are old.

@@ -1,9 +1,11 @@
-// Luminux news proxy. Fetches top headlines from GNews, trims them to what the app shows, and caches them per
-// country so one upstream call serves every reader. The app never sees the API key and GNews never sees readers.
+// Luminux news proxy. A schedule fetches top headlines from GNews for each English edition into KV, and readers are
+// served from KV, so GNews usage is fixed (editions × runs per day) however many people read. The app never sees the
+// API key and GNews never sees readers.
 
-const CACHE_SECONDS = 15 * 60;
 // English editions GNews supports; other countries get the default edition.
-const ENGLISH_EDITIONS = new Set(["au", "ca", "gb", "ie", "in", "pk", "ph", "sg", "us"]);
+const ENGLISH_EDITIONS = ["au", "ca", "gb", "ie", "in", "pk", "ph", "sg", "us"];
+// Matches the app's own refresh interval.
+const CLIENT_CACHE_SECONDS = 15 * 60;
 
 export default {
   async fetch(request, env, ctx) {
@@ -15,42 +17,53 @@ export default {
     }
 
     const country = edition(request, env);
-    const cacheKey = new Request(`https://luminux-news.cache/${country}`);
-    const cache = caches.default;
-    const cached = await cache.match(cacheKey);
-    if (cached) return cached;
-
-    const upstream = new URL("https://gnews.io/api/v4/top-headlines");
-    upstream.searchParams.set("category", "general");
-    upstream.searchParams.set("lang", "en");
-    upstream.searchParams.set("country", country);
-    upstream.searchParams.set("max", env.MAX_ARTICLES ?? "20");
-    upstream.searchParams.set("apikey", env.GNEWS_API_KEY);
-
-    const reply = await fetch(upstream);
-    if (!reply.ok) {
-      // A short-lived error, so the app keeps its last headlines and retries later.
+    let stored = await env.HEADLINES.get(country, "json");
+    if (!stored) {
+      // Only before the first scheduled run has filled this edition.
+      stored = await refreshEdition(country, env);
+    }
+    if (!stored) {
       return new Response("Upstream error", { status: 502 });
     }
-    const data = await reply.json();
-    const articles = (data.articles ?? []).map((article) => ({
+    return json({ enabled: true, attribution: "Headlines from GNews", articles: stored.articles }, CLIENT_CACHE_SECONDS);
+  },
+
+  async scheduled(event, env, ctx) {
+    for (const country of ENGLISH_EDITIONS) {
+      await refreshEdition(country, env);
+    }
+  },
+};
+
+async function refreshEdition(country, env) {
+  const upstream = new URL("https://gnews.io/api/v4/top-headlines");
+  upstream.searchParams.set("category", "general");
+  upstream.searchParams.set("lang", "en");
+  upstream.searchParams.set("country", country);
+  upstream.searchParams.set("max", env.MAX_ARTICLES ?? "20");
+  upstream.searchParams.set("apikey", env.GNEWS_API_KEY);
+
+  const reply = await fetch(upstream);
+  if (!reply.ok) return null;
+  const data = await reply.json();
+  const stored = {
+    fetchedAt: new Date().toISOString(),
+    articles: (data.articles ?? []).map((article) => ({
       title: article.title,
       source: article.source?.name ?? "",
       url: article.url,
       image: article.image ?? undefined,
       publishedAt: article.publishedAt ?? undefined,
-    }));
-
-    const response = json({ enabled: true, attribution: "Headlines from GNews", articles }, CACHE_SECONDS);
-    ctx.waitUntil(cache.put(cacheKey, response.clone()));
-    return response;
-  },
-};
+    })),
+  };
+  await env.HEADLINES.put(country, JSON.stringify(stored));
+  return stored;
+}
 
 // Cloudflare already knows the reader's country from the connection; nothing is stored.
 function edition(request, env) {
   const country = (request.cf?.country ?? "").toLowerCase();
-  return ENGLISH_EDITIONS.has(country) ? country : (env.DEFAULT_COUNTRY ?? "us");
+  return ENGLISH_EDITIONS.includes(country) ? country : (env.DEFAULT_COUNTRY ?? "us");
 }
 
 function json(body, maxAge) {

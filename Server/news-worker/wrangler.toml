@@ -6,6 +6,16 @@ compatibility_date = "2026-09-01"
 [observability]
 enabled = false
 
+# Every 20 minutes: 9 editions × 72 runs = 648 GNews requests and KV writes a day, inside GNews' 1,000-a-day entry
+# plan and KV's free 1,000 writes a day.
+[triggers]
+crons = ["*/20 * * * *"]
+
+# Create it with `npx wrangler kv namespace create HEADLINES` and paste the id it prints.
+[[kv_namespaces]]
+binding = "HEADLINES"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
 [vars]
 # The remote switch for the app's news panel. "false" hides it for everyone on their next refresh.
 NEWS_ENABLED = "true"

@@ -14,7 +14,7 @@ struct ProStoreTests {
 
     /// The local StoreKit service catches up asynchronously (most of all on a bundle's first run), so give it a moment.
     private func refresh(_ store: ProStore, until condition: () -> Bool) async {
-        for _ in 0..<20 {
+        for _ in 0..<50 {
             await store.refresh()
             if condition() { return }
             try? await Task.sleep(for: .milliseconds(100))

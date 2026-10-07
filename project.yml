@@ -31,6 +31,27 @@ targets:
       - target: LuminuxWidget
       - package: GoogleMobileAds
       - package: GoogleUserMessagingPlatform
+    postBuildScripts:
+      - name: Check App Store IDs
+        # Archives only (ACTION is "install"); simulator and phone test builds skip it.
+        script: |
+          if [ "$ACTION" != "install" ]; then exit 0; fi
+          fail=0
+          case "$SWIFT_ACTIVE_COMPILATION_CONDITIONS" in
+            *PRO_FREE_FOR_TESTING*) echo "error: archives must be built without PRO_FREE_FOR_TESTING"; fail=1 ;;
+          esac
+          plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+          ids="$(/usr/libexec/PlistBuddy -c 'Print :GADApplicationIdentifier' "$plist") $(/usr/libexec/PlistBuddy -c 'Print :LuminuxNativeAdUnitID' "$plist")"
+          case "$ids" in
+            *ca-app-pub-3940256099942544*) echo "error: Google's test AdMob IDs are still in project.yml"; fail=1 ;;
+          esac
+          if [ -z "$(/usr/libexec/PlistBuddy -c 'Print :LuminuxNewsURL' "$plist" 2>/dev/null)" ]; then
+            echo "warning: LuminuxNewsURL is empty, so this build has no news panel or ads"
+          fi
+          exit $fail
+        inputFiles:
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+        basedOnDependencyAnalysis: false
     entitlements:
       path: Luminux/Luminux.entitlements
       properties:
@@ -60,9 +81,9 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.buddhanag.luminux
             CFBundleURLSchemes: [luminux]
-        # Google's test IDs until the AdMob app exists; replace both before an App Store archive.
-        GADApplicationIdentifier: ca-app-pub-3940256099942544~1458002511
-        LuminuxNativeAdUnitID: ca-app-pub-3940256099942544/3986624511
+        # The Luminux AdMob app and its native ad unit. Debug and test builds use Google's test unit instead (NewsAds).
+        GADApplicationIdentifier: ca-app-pub-7154730975495885~4556038621
+        LuminuxNativeAdUnitID: ca-app-pub-7154730975495885/5809410542
         # The news proxy (Server/news-worker). Empty shows sample headlines in debug and test builds only.
         LuminuxNewsURL: ""
         # Google's list from developers.google.com/admob/ios/3p-skadnetworks; refresh it when Google adds buyers.

@@ -34,11 +34,11 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>GADApplicationIdentifier</key>
-	<string>ca-app-pub-3940256099942544~1458002511</string>
+	<string>ca-app-pub-7154730975495885~4556038621</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LuminuxNativeAdUnitID</key>
-	<string>ca-app-pub-3940256099942544/3986624511</string>
+	<string>ca-app-pub-7154730975495885/5809410542</string>
 	<key>LuminuxNewsURL</key>
 	<string></string>
 	<key>NSPhotoLibraryUsageDescription</key>
