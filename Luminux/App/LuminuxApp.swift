@@ -7,6 +7,8 @@ struct LuminuxApp: App {
     @State private var navigator = Navigator()
     @State private var store = ProStore()
     @State private var journal = Journal()
+    @State private var news = NewsFeed()
+    @State private var newsAds = NewsAds()
 
     var body: some Scene {
         WindowGroup {
@@ -16,6 +18,8 @@ struct LuminuxApp: App {
                 .environment(navigator)
                 .environment(store)
                 .environment(journal)
+                .environment(news)
+                .environment(newsAds)
                 .environment(\.metro, settings.palette)
                 .tint(settings.accent.color)
                 .preferredColorScheme(settings.theme.colorScheme)

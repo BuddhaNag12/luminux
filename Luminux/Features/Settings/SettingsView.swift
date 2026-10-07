@@ -4,6 +4,7 @@ struct SettingsView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ProStore.self) private var store
     @Environment(Navigator.self) private var navigator
+    @Environment(NewsAds.self) private var ads
     @Environment(\.metro) private var metro
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
@@ -140,6 +141,13 @@ struct SettingsView: View {
                 .metroFeather(row: 13)
                 .padding(.bottom, 28)
 
+                if ads.needsPrivacyOptions && !store.isUnlocked {
+                    Button("ad privacy choices") { Task { await ads.presentPrivacyOptions() } }
+                        .buttonStyle(.metro)
+                        .metroFeather(row: 14)
+                        .padding(.bottom, 12)
+                }
+
                 Button("about and licences") { navigator.push(.about) }
                     .buttonStyle(.metro)
                     .metroFeather(row: 14)
@@ -236,7 +244,7 @@ enum AccentColorPicker {
     private static var activeDelegate: Delegate?
 
     static func present(initial: Accent, onChange: @escaping (Accent) -> Void) {
-        guard let presenter = topViewController() else { return }
+        guard let presenter = UIApplication.shared.topViewController else { return }
         let picker = UIColorPickerViewController()
         picker.supportsAlpha = false
         picker.selectedColor = UIColor(initial.color)
@@ -245,18 +253,6 @@ enum AccentColorPicker {
         picker.delegate = delegate
         picker.sheetPresentationController?.detents = [.medium(), .large()]
         presenter.present(picker, animated: true)
-    }
-
-    private static func topViewController() -> UIViewController? {
-        let window = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow)
-        var top = window?.rootViewController
-        while let presented = top?.presentedViewController, !presented.isBeingDismissed {
-            top = presented
-        }
-        return top
     }
 
     private final class Delegate: NSObject, UIColorPickerViewControllerDelegate {

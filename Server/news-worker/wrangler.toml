@@ -1,0 +1,15 @@
+name = "luminux-news"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# Logs off: the proxy keeps nothing about who asked.
+[observability]
+enabled = false
+
+[vars]
+# The remote switch for the app's news panel. "false" hides it for everyone on their next refresh.
+NEWS_ENABLED = "true"
+DEFAULT_COUNTRY = "us"
+MAX_ARTICLES = "20"
+
+# The GNews key is a secret, never committed: `npx wrangler secret put GNEWS_API_KEY`.

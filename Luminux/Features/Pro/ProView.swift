@@ -18,6 +18,7 @@ struct ProPitch: View {
     }
 
     private let perks = [
+        Perk(glyph: "newspaper", title: "no ads", detail: "Hides the news panel and its ads."),
         Perk(glyph: "paintpalette", title: "any accent colour", detail: "Pick your own accent, beyond the classic six."),
         Perk(glyph: "rectangle.split.2x1", title: "wide live tiles", detail: "Medium and large photo tiles for the home screen."),
         Perk(glyph: "play.rectangle", title: "slideshow", detail: "A slow pan and zoom through any collection."),
@@ -64,7 +65,7 @@ struct ProPitch: View {
 
                     Text(store.product == nil
                          ? "Can't reach the App Store right now."
-                         : "One payment, yours for good. No subscription, no ads, nothing tracked.")
+                         : "One payment, yours for good. No subscription.")
                         .font(.metroCaption)
                         .foregroundStyle(metro.foreground.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)

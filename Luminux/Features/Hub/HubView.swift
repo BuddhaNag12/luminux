@@ -14,13 +14,16 @@ extension PHFetchResult where ObjectType == PHAsset {
     }
 }
 
-/// The photos hub: a panorama with collection tiles, recent photos and favorites over a photo background.
+/// The photos hub: a panorama with collection tiles, recent photos and favorites over a photo background. Without
+/// Pro, a news panel with ads sits to the left of the collection; the hub still opens on the collection.
 struct HubView: View {
     @Environment(PhotoLibrary.self) private var library
     @Environment(Navigator.self) private var navigator
     @Environment(AppSettings.self) private var settings
     @Environment(ProStore.self) private var store
     @Environment(Journal.self) private var journal
+    @Environment(NewsFeed.self) private var news
+    @Environment(NewsAds.self) private var ads
     @Environment(\.metro) private var metro
     @Environment(\.displayScale) private var displayScale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -33,11 +36,18 @@ struct HubView: View {
         settings.movesWithPhone && !reduceMotion && scenePhase == .active && navigator.path.isEmpty && navigator.viewer == nil
     }
 
+    private var showsNews: Bool { !store.isUnlocked && news.isEnabled }
+
     private let tileColumns = [GridItem(.flexible(), spacing: MetroMetrics.gutter), GridItem(.flexible(), spacing: MetroMetrics.gutter)]
     private let photoColumns = Array(repeating: GridItem(.flexible(), spacing: MetroMetrics.gutter), count: 3)
 
     var body: some View {
-        Panorama("photos") {
+        Panorama("photos", leadingTitle: showsNews ? "news" : nil, startPanel: showsNews ? 1 : 0, onPanelChange: { panel in
+            if showsNews && panel == 0 { Task { await prepareNews() } }
+        }) {
+            if showsNews {
+                PanoramaSection("top stories") { NewsPanel() }
+            }
             PanoramaSection("collection") { collection }
             PanoramaSection("what's new") {
                 photoGrid(.recent, limit: 60, empty: "No photos from the last 30 days.")
@@ -63,6 +73,16 @@ struct HubView: View {
             tracks ? tilt.start() : tilt.stop()
         }
         .onDisappear { tilt.stop() }
+        .task(id: store.isUnlocked) {
+            // Picks up the remote switch quietly; ads wait until the panel is actually shown.
+            guard !store.isUnlocked else { return ads.clear() }
+            await news.refreshIfStale()
+        }
+    }
+
+    private func prepareNews() async {
+        await news.refreshIfStale()
+        await ads.prepare(headlineCount: news.articles.count)
     }
 
     private var menu: [AppBarMenuItem] {
