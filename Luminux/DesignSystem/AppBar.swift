@@ -92,7 +92,7 @@ struct MetroAppBar: View {
         }
         .frame(minHeight: MetroMetrics.appBarHeight, alignment: .top)
         .foregroundStyle(metro.foreground)
-        .background(metro.appBar.ignoresSafeArea(edges: .bottom))
+        .background((isExpanded ? metro.appBarExpanded : metro.appBar).ignoresSafeArea(edges: .bottom))
     }
 
     private func collapse() {

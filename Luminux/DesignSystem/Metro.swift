@@ -71,6 +71,8 @@ struct MetroPalette: Equatable {
     var chrome: Color { theme == .dark ? Color(hex: 0x1F1F1F) : Color(hex: 0xDDDDDD) }
     /// Lets the photos scrolling underneath show through, darkened, like the original app bar.
     var appBar: Color { theme == .dark ? Color(hex: 0x1F1F1F).opacity(0.72) : Color(hex: 0xDDDDDD).opacity(0.8) }
+    /// The open app bar is nearly solid, so its labels and menu read clearly over busy photos.
+    var appBarExpanded: Color { chrome.opacity(0.95) }
     var accentColor: Color { accent.color }
 }
 
