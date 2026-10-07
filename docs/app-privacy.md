@@ -1,4 +1,4 @@
-# Privacy: App Store answers and policy
+# App Store privacy answers
 
 Luminux collects nothing itself. Since the news panel, Google's ad SDK (Google Mobile Ads 13.x) and its consent SDK
 (User Messaging Platform 3.x) do, so the App Store label is no longer "Data Not Collected". The answers below come
@@ -33,37 +33,4 @@ exactly that.
 - News: the Luminux news server answers the request and keeps nothing (logs off). GNews only ever sees the server.
 - Purchases: handled by Apple.
 
-## Privacy policy (draft to publish)
-
-Host this at a public URL (GitHub Pages works) and put that URL in App Store Connect and in the AdMob GDPR message.
-Fill in the contact address.
-
-> **Luminux privacy policy**
->
-> *Last updated: [date]*
->
-> **Your photos.** Luminux shows the photos and videos in your library. They stay on your iPhone and are never
-> uploaded. Journal notes and titles are stored on your iPhone only.
->
-> **Place names.** If "name places in the journal" is on, Luminux sends the locations of photos taken away from home
-> to Apple Maps to look up place names. Photos are never sent. You can turn this off in settings.
->
-> **News.** Without Luminux Pro, the hub has a news panel. Headlines come from GNews through Luminux's own server. When
-> the app asks for headlines, the server sees your internet address to answer the request and to pick your country's
-> edition; it keeps no logs and stores nothing about you. GNews never receives your request. Stories open on the
-> publisher's website, which has its own privacy policy.
->
-> **Ads.** The news panel shows ads from Google AdMob. Luminux asks for non-personalised ads and never asks to track
-> you across other apps. Google's SDK may still collect device identifiers, approximate location from your internet
-> address, ad interactions, and crash and performance data to show ads, measure them and prevent fraud. In the EEA,
-> the UK and Switzerland, Google asks for your consent first, and you can change it later in settings → "ad privacy
-> choices". See how Google uses this information: https://policies.google.com/technologies/partner-sites
->
-> **Luminux Pro.** Buying Pro removes the news panel and its ads; Google's SDK is then never started. Purchases are
-> handled by Apple; Luminux never sees your payment details.
->
-> **Children.** Luminux isn't directed at children under 13.
->
-> **Changes.** If this policy changes, the new version will be posted here with a new date.
->
-> **Contact.** [support email]
+The public policy that matches these answers is [`privacy.md`](privacy.md).
