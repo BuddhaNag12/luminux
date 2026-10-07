@@ -26,7 +26,7 @@ private struct Swatch: Identifiable {
     let color: Color
 }
 
-private let swatches = Accent.allCases.enumerated().map { Swatch(id: $0.offset, color: $0.element.color) }
+private let swatches = Accent.presets.enumerated().map { Swatch(id: $0.offset, color: $0.element.color) }
 
 private struct PanoramaDemo: View {
     @State private var isAppBarExpanded = false
@@ -42,7 +42,7 @@ private struct PanoramaDemo: View {
             Panorama("photos") {
                 PanoramaSection("collection") {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: MetroMetrics.gutter) {
-                        MetroTile(title: "camera roll", action: {}) { swatches[13].color }
+                        MetroTile(title: "camera roll", action: {}) { swatches[4].color }
                             .aspectRatio(1, contentMode: .fit)
                         MetroTile(title: "albums", action: {}) {
                             metro.accentColor.overlay {

@@ -34,9 +34,11 @@ struct AppSettingsTests {
         #expect(!reloaded.playsLivingImages)
     }
 
-    @Test func hasTheTwentyMetroAccents() {
-        #expect(Accent.allCases.count == 20)
-        #expect(Accent.cobalt.hex == 0x0050EF)
-        #expect(Set(Accent.allCases.map(\.hex)).count == 20)
+    @Test func persistsACustomAccent() {
+        let defaults = freshDefaults()
+        let settings = AppSettings(defaults: defaults)
+        settings.accent = Accent(hex: 0x3A7D44)
+
+        #expect(AppSettings(defaults: defaults).accent == Accent(hex: 0x3A7D44))
     }
 }

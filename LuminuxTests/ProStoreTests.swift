@@ -42,10 +42,4 @@ struct ProStoreTests {
         await refresh(store) { !store.isUnlocked }
         #expect(!store.isUnlocked)
     }
-
-    @Test func onlyTheClassicSixAccentsAreFree() {
-        #expect(Accent.allCases.filter(\.isFree).count == 6)
-        #expect(Accent.cobalt.isFree)
-        #expect(!Accent.violet.isFree)
-    }
 }

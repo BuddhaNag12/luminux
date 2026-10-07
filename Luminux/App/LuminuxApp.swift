@@ -67,6 +67,8 @@ private struct AppShell: View {
                 SettingsView()
             case .pro:
                 ProView()
+            case .about:
+                AboutView()
             }
         }
         .environment(\.zoomNamespace, zoom)
@@ -82,9 +84,9 @@ private struct AppShell: View {
         .task {
             await store.refresh()
         }
-        .onChange(of: store.isUnlocked) { _, unlocked in
-            // A refunded purchase takes its accent with it.
-            if !unlocked && !settings.accent.isFree { settings.accent = .cobalt }
+        .onChange(of: store.unlocksCustomAccent) { _, unlocked in
+            // A refunded purchase takes its custom colour with it.
+            if !unlocked && !settings.accent.isPreset { settings.accent = .cobalt }
         }
         .task(id: TileRefreshKey(changeToken: library.changeToken, accent: settings.accent)) {
             guard library.isLoaded else { return }

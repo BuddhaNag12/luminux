@@ -1,37 +1,55 @@
 import SwiftUI
 
-enum Accent: String, CaseIterable, Identifiable, Sendable {
-    case lime, green, emerald, teal, cyan, cobalt, indigo, violet, pink, magenta
-    case crimson, red, mango, amber, yellow, brown, olive, steel, mauve, taupe
+/// The accent colour: one of the six classic presets, or any colour from the picker (a Pro feature).
+nonisolated struct Accent: Hashable, Identifiable, Sendable {
+    let hex: UInt32
 
-    var id: String { rawValue }
+    static let cobalt = Accent(hex: 0x0050EF)
+    static let lime = Accent(hex: 0xA4C400)
+    static let teal = Accent(hex: 0x00ABA9)
+    static let magenta = Accent(hex: 0xD80073)
+    static let red = Accent(hex: 0xE51400)
+    static let mango = Accent(hex: 0xFA6800)
 
-    var hex: UInt32 {
-        switch self {
-        case .lime: 0xA4C400
-        case .green: 0x60A917
-        case .emerald: 0x008A00
-        case .teal: 0x00ABA9
-        case .cyan: 0x1BA1E2
-        case .cobalt: 0x0050EF
-        case .indigo: 0x6A00FF
-        case .violet: 0xAA00FF
-        case .pink: 0xF472D0
-        case .magenta: 0xD80073
-        case .crimson: 0xA20025
-        case .red: 0xE51400
-        case .mango: 0xFA6800
-        case .amber: 0xF0A30A
-        case .yellow: 0xE3C800
-        case .brown: 0x825A2C
-        case .olive: 0x6D8764
-        case .steel: 0x647687
-        case .mauve: 0x76608A
-        case .taupe: 0x87794E
+    static let presets: [Accent] = [.cobalt, .lime, .teal, .magenta, .red, .mango]
+    private static let names: [UInt32: String] = [
+        0x0050EF: "cobalt", 0xA4C400: "lime", 0x00ABA9: "teal",
+        0xD80073: "magenta", 0xE51400: "red", 0xFA6800: "mango",
+    ]
+
+    var id: UInt32 { hex }
+    var color: Color { Color(hex: hex) }
+    var isPreset: Bool { Self.names[hex] != nil }
+    /// The preset's name, or the hex code of a custom colour.
+    var name: String { Self.names[hex] ?? String(format: "#%06X", hex) }
+
+    /// A picked colour, nudged into the brightness range of the original Metro accents so white tile labels stay
+    /// readable on it and it still shows on a black background.
+    static func custom(red: Double, green: Double, blue: Double) -> Accent {
+        let linear = [red, green, blue].map { channel in
+            channel <= 0.04045 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
         }
+        let luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+        let adjusted: [Double]
+        if luminance > maxLuminance {
+            adjusted = linear.map { $0 * maxLuminance / luminance }
+        } else if luminance < minLuminance {
+            // Mix toward white; scaling up would leave pure black black.
+            let mix = (minLuminance - luminance) / (1 - luminance)
+            adjusted = linear.map { $0 + (1 - $0) * mix }
+        } else {
+            adjusted = linear
+        }
+        let bytes = adjusted.map { channel -> UInt32 in
+            let encoded = channel <= 0.0031308 ? channel * 12.92 : 1.055 * pow(channel, 1 / 2.4) - 0.055
+            return UInt32((min(max(encoded, 0), 1) * 255).rounded())
+        }
+        return Accent(hex: bytes[0] << 16 | bytes[1] << 8 | bytes[2])
     }
 
-    var color: Color { Color(hex: hex) }
+    /// Relative luminance bounds of the 20 Windows Phone accents (crimson to yellow).
+    static let minLuminance = 0.07
+    static let maxLuminance = 0.58
 }
 
 enum MetroTheme: String, CaseIterable, Identifiable, Sendable {
@@ -68,7 +86,7 @@ extension EnvironmentValues {
 }
 
 extension Color {
-    init(hex: UInt32) {
+    nonisolated init(hex: UInt32) {
         self.init(
             .sRGB,
             red: Double((hex >> 16) & 0xFF) / 255,

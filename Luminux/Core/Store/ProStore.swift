@@ -2,7 +2,8 @@ import StoreKit
 import SwiftUI
 import WidgetKit
 
-/// The one-time "Luminux Pro" purchase: every accent, the medium and large live tiles, the slideshow and editing.
+/// The one-time "Luminux Pro" purchase: custom accent colours, the medium and large live tiles, the slideshow and
+/// editing.
 @Observable
 final class ProStore {
     static let productID = "com.buddhanag.luminux.pro"
@@ -14,6 +15,18 @@ final class ProStore {
     var message: String?
 
     @ObservationIgnored private var updates: Task<Void, Never>?
+
+    /// Test installs on the developer's phone are built with `PRO_FREE_FOR_TESTING` so the colour picker can be tried
+    /// before the purchase exists in App Store Connect. App Store builds never set it.
+    static let isTestBuild: Bool = {
+        #if PRO_FREE_FOR_TESTING
+        true
+        #else
+        false
+        #endif
+    }()
+
+    var unlocksCustomAccent: Bool { isUnlocked || Self.isTestBuild }
 
     init() {
         // The last known state, so Pro features don't flicker off while the App Store answers.
@@ -92,11 +105,4 @@ final class ProStore {
         LiveTileStore.isPro = unlocked
         WidgetCenter.shared.reloadAllTimelines()
     }
-}
-
-extension Accent {
-    /// The classic six stay free; Pro unlocks the rest.
-    static let free: [Accent] = [.cobalt, .lime, .teal, .magenta, .red, .mango]
-
-    var isFree: Bool { Self.free.contains(self) }
 }

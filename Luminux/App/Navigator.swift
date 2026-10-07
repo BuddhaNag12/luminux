@@ -5,6 +5,7 @@ enum Route: Hashable {
     case album(String)
     case settings
     case pro
+    case about
 }
 
 struct ViewerRequest: Identifiable, Hashable {

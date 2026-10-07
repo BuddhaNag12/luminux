@@ -1,3 +1,4 @@
+import AVFoundation
 import ImageIO
 import MapKit
 import Photos
@@ -111,9 +112,11 @@ struct AssetDetails {
         let megapixels = Double(asset.pixelWidth * asset.pixelHeight) / 1_000_000
         rows.append(Row(label: "dimensions", value: "\(asset.pixelWidth) × \(asset.pixelHeight) · \(megapixels.formatted(.number.precision(.fractionLength(1)))) MP"))
 
-        // fileSize isn't public API on PHAssetResource, but it's long-standing and only used for display.
-        if let bytes = resource?.value(forKey: "fileSize") as? Int64 {
-            rows.append(Row(label: "size", value: ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)))
+        // Photos read their original for the camera info anyway, so its length is the size.
+        let original = asset.mediaType == .image ? await originalImageData(for: asset) : nil
+        let bytes = asset.mediaType == .video ? await videoFileSize(for: asset) : original?.count
+        if let bytes {
+            rows.append(Row(label: "size", value: ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)))
         }
 
         switch asset.mediaType {
@@ -123,7 +126,7 @@ struct AssetDetails {
             rows.append(Row(label: "type", value: asset.mediaSubtypes.contains(.photoLive) ? "live photo" : "photo"))
         }
 
-        if asset.mediaType == .image, let exif = await cameraInfo(for: asset) {
+        if let original, let exif = cameraInfo(from: original) {
             rows.append(contentsOf: exif)
         }
 
@@ -136,17 +139,32 @@ struct AssetDetails {
         return AssetDetails(rows: rows)
     }
 
-    private static func cameraInfo(for asset: PHAsset) async -> [Row]? {
+    private static func originalImageData(for asset: PHAsset) async -> Data? {
         let options = PHImageRequestOptions()
         options.isNetworkAccessAllowed = true
         options.version = .original
-        let data: Data? = await withCheckedContinuation { continuation in
+        return await withCheckedContinuation { continuation in
             PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { @Sendable data, _, _, _ in
                 continuation.resume(returning: data)
             }
         }
-        guard let data,
-              let source = CGImageSourceCreateWithData(data as CFData, nil),
+    }
+
+    /// The size of a video that's on the device; nil for one that's only in iCloud, rather than downloading it.
+    private static func videoFileSize(for asset: PHAsset) async -> Int? {
+        let options = PHVideoRequestOptions()
+        options.version = .original
+        options.isNetworkAccessAllowed = false
+        let url: URL? = await withCheckedContinuation { continuation in
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { @Sendable video, _, _ in
+                continuation.resume(returning: (video as? AVURLAsset)?.url)
+            }
+        }
+        return url.flatMap { try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize }
+    }
+
+    private static func cameraInfo(from data: Data) -> [Row]? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         else { return nil }
 

@@ -43,18 +43,13 @@ struct SettingsView: View {
                 HStack(alignment: .firstTextBaseline) {
                     label("accent color")
                     Spacer()
-                    Text(settings.accent.rawValue).font(.metroCaption).foregroundStyle(metro.secondary)
+                    Text(settings.accent.name).font(.metroCaption).foregroundStyle(metro.secondary)
                 }
                 .metroFeather(row: 3)
                 LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(Array(Accent.allCases.enumerated()), id: \.element) { index, accent in
-                        let isLocked = !accent.isFree && !store.isUnlocked
+                    ForEach(Array(Accent.presets.enumerated()), id: \.element) { index, accent in
                         Button {
-                            if isLocked {
-                                navigator.push(.pro)
-                            } else {
-                                withAnimation(MetroMotion.fade) { settings.accent = accent }
-                            }
+                            withAnimation(MetroMotion.fade) { settings.accent = accent }
                         } label: {
                             accent.color
                                 .aspectRatio(1, contentMode: .fit)
@@ -66,20 +61,15 @@ struct SettingsView: View {
                                             .foregroundStyle(.white)
                                     }
                                 }
-                                .overlay(alignment: .bottomTrailing) {
-                                    if isLocked {
-                                        Image(systemName: "lock.fill")
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(.white.opacity(0.85))
-                                            .padding(6)
-                                    }
-                                }
                         }
                         .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
                         .metroFeather(row: 4 + index / 4, column: index % 4)
-                        .accessibilityLabel(isLocked ? "\(accent.rawValue), needs Luminux Pro" : accent.rawValue)
+                        .accessibilityLabel(accent.name)
                         .accessibilityAddTraits(settings.accent == accent ? .isSelected : [])
                     }
+
+                    customAccentTile
+                        .metroFeather(row: 4 + Accent.presets.count / 4, column: Accent.presets.count % 4)
                 }
                 .padding(.bottom, 28)
 
@@ -120,6 +110,11 @@ struct SettingsView: View {
                     }
                 }
                 .metroFeather(row: 13)
+                .padding(.bottom, 28)
+
+                Button("about and licences") { navigator.push(.about) }
+                    .buttonStyle(.metro)
+                    .metroFeather(row: 14)
             }
             .padding(.horizontal, MetroMetrics.margin + 12)
             .padding(.top, 16)
@@ -127,6 +122,42 @@ struct SettingsView: View {
         }
         .foregroundStyle(metro.foreground)
         .background(metro.background)
+    }
+
+    /// Opens the colour picker for any accent; shows the custom colour once one is picked.
+    private var customAccentTile: some View {
+        let isCustom = !settings.accent.isPreset
+        let isLocked = !store.unlocksCustomAccent
+        return Button {
+            if isLocked {
+                navigator.push(.pro)
+            } else {
+                AccentColorPicker.present(initial: settings.accent) { settings.accent = $0 }
+            }
+        } label: {
+            (isCustom ? settings.accent.color : metro.chrome)
+                .aspectRatio(1, contentMode: .fit)
+                .overlay {
+                    if isCustom {
+                        Rectangle().strokeBorder(metro.foreground, lineWidth: 3)
+                    }
+                    Image(systemName: "eyedropper")
+                        .font(.system(size: 20, weight: .light))
+                        .foregroundStyle(isCustom ? .white : metro.foreground)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(metro.foreground.opacity(0.85))
+                            .padding(6)
+                    }
+                }
+        }
+        .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
+        .accessibilityLabel(isLocked ? "Custom colour, needs Luminux Pro" : "Custom colour")
+        .accessibilityValue(isCustom ? settings.accent.name : "")
+        .accessibilityAddTraits(isCustom ? .isSelected : [])
     }
 
     private func label(_ text: String) -> some View {
@@ -165,6 +196,56 @@ struct MetroToggleStyle: ToggleStyle {
         .buttonStyle(.plain)
         .accessibilityRepresentation {
             Toggle(isOn: configuration.$isOn) { configuration.label }
+        }
+    }
+}
+
+/// The system colour picker without opacity. It reports every change, so the app's accent follows the drag.
+/// UIKit presents it directly: its "pick from screen" hides the picker and then re-presents it, which crashes when
+/// it's wrapped in a SwiftUI sheet (there's no presented controller to bring back).
+enum AccentColorPicker {
+    /// The picker holds its delegate weakly; this keeps the open one alive.
+    private static var activeDelegate: Delegate?
+
+    static func present(initial: Accent, onChange: @escaping (Accent) -> Void) {
+        guard let presenter = topViewController() else { return }
+        let picker = UIColorPickerViewController()
+        picker.supportsAlpha = false
+        picker.selectedColor = UIColor(initial.color)
+        let delegate = Delegate(onChange: onChange)
+        activeDelegate = delegate
+        picker.delegate = delegate
+        picker.sheetPresentationController?.detents = [.medium(), .large()]
+        presenter.present(picker, animated: true)
+    }
+
+    private static func topViewController() -> UIViewController? {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)
+        var top = window?.rootViewController
+        while let presented = top?.presentedViewController, !presented.isBeingDismissed {
+            top = presented
+        }
+        return top
+    }
+
+    private final class Delegate: NSObject, UIColorPickerViewControllerDelegate {
+        let onChange: (Accent) -> Void
+
+        init(onChange: @escaping (Accent) -> Void) { self.onChange = onChange }
+
+        func colorPickerViewController(_ picker: UIColorPickerViewController, didSelect color: UIColor, continuously: Bool) {
+            var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+            guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return }
+            // Display P3 picks can fall outside sRGB.
+            let clamp = { (value: CGFloat) in Double(min(max(value, 0), 1)) }
+            onChange(.custom(red: clamp(red), green: clamp(green), blue: clamp(blue)))
+        }
+
+        func colorPickerViewControllerDidFinish(_ picker: UIColorPickerViewController) {
+            AccentColorPicker.activeDelegate = nil
         }
     }
 }

@@ -18,7 +18,7 @@ struct ProPitch: View {
     }
 
     private let perks = [
-        Perk(glyph: "paintpalette", title: "every accent", detail: "All 20 accent colours, not just the classic six."),
+        Perk(glyph: "paintpalette", title: "any accent colour", detail: "Pick your own accent, beyond the classic six."),
         Perk(glyph: "rectangle.split.2x1", title: "wide live tiles", detail: "Medium and large photo tiles for the home screen."),
         Perk(glyph: "play.rectangle", title: "slideshow", detail: "A slow pan and zoom through any collection."),
         Perk(glyph: "crop.rotate", title: "editing", detail: "Rotate and crop, saved back to your library."),

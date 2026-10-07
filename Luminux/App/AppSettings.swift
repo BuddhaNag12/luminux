@@ -4,7 +4,7 @@ import Observation
 @Observable
 final class AppSettings {
     private enum Key {
-        static let accent = "accent"
+        static let accent = "accentHex"
         static let theme = "theme"
         static let showsHubBackground = "showsHubBackground"
         static let playsLivingImages = "playsLivingImages"
@@ -15,7 +15,7 @@ final class AppSettings {
     @ObservationIgnored private let defaults: UserDefaults
 
     var accent: Accent {
-        didSet { defaults.set(accent.rawValue, forKey: Key.accent) }
+        didSet { defaults.set(Int(accent.hex), forKey: Key.accent) }
     }
 
     var theme: MetroTheme {
@@ -43,7 +43,7 @@ final class AppSettings {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        accent = defaults.string(forKey: Key.accent).flatMap(Accent.init) ?? .cobalt
+        accent = (defaults.object(forKey: Key.accent) as? Int).map { Accent(hex: UInt32($0)) } ?? .cobalt
         theme = defaults.string(forKey: Key.theme).flatMap(MetroTheme.init) ?? .dark
         showsHubBackground = defaults.object(forKey: Key.showsHubBackground) as? Bool ?? true
         playsLivingImages = defaults.object(forKey: Key.playsLivingImages) as? Bool ?? true
