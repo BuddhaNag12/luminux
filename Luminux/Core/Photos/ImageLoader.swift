@@ -7,6 +7,7 @@ nonisolated final class ImageLoader: @unchecked Sendable {
     static let shared = ImageLoader()
 
     private let manager = PHCachingImageManager()
+    private let decodeQueue = DispatchQueue(label: "com.buddhanag.luminux.decode", qos: .userInitiated)
 
     func images(for asset: PHAsset, targetSize: CGSize, contentMode: PHImageContentMode = .aspectFill) -> AsyncStream<UIImage> {
         let manager = manager
@@ -15,11 +16,16 @@ nonisolated final class ImageLoader: @unchecked Sendable {
             options.deliveryMode = .opportunistic
             options.resizeMode = .fast
             options.isNetworkAccessAllowed = true
+            let decodeQueue = decodeQueue
             let request = manager.requestImage(for: asset, targetSize: targetSize, contentMode: contentMode, options: options) { @Sendable image, info in
-                if let image { continuation.yield(image) }
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
                 let failed = info?[PHImageErrorKey] != nil || (info?[PHImageCancelledKey] as? Bool) == true
-                if !isDegraded || failed { continuation.finish() }
+                // Decode before the view sees it; otherwise the first draw decodes on the main thread and stalls animations.
+                // The serial queue keeps the quick low-quality image ahead of the final one.
+                decodeQueue.async {
+                    if let image { continuation.yield(image.preparingForDisplay() ?? image) }
+                    if !isDegraded || failed { continuation.finish() }
+                }
             }
             continuation.onTermination = { _ in manager.cancelImageRequest(request) }
         }

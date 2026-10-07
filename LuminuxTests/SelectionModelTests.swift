@@ -26,4 +26,32 @@ struct SelectionModelTests {
 
         #expect(selection.selectedIDs == ["other"])
     }
+
+    @Test func swipeFromAnUnselectedPhotoSelectsTheRange() {
+        let selection = SelectionModel()
+        selection.selectedIDs = ["x"]
+        selection.beginSwipe(on: "a")
+        selection.updateSwipe(covering: ["a", "b", "c"])
+
+        #expect(selection.selectedIDs == ["a", "b", "c", "x"])
+    }
+
+    @Test func swipingBackRestoresWhatWasThere() {
+        let selection = SelectionModel()
+        selection.selectedIDs = ["c"]
+        selection.beginSwipe(on: "a")
+        selection.updateSwipe(covering: ["a", "b", "c", "d"])
+        selection.updateSwipe(covering: ["a", "b"])
+
+        #expect(selection.selectedIDs == ["a", "b", "c"])
+    }
+
+    @Test func swipeFromASelectedPhotoClears() {
+        let selection = SelectionModel()
+        selection.selectedIDs = ["a", "b", "c", "z"]
+        selection.beginSwipe(on: "a")
+        selection.updateSwipe(covering: ["a", "b"])
+
+        #expect(selection.selectedIDs == ["c", "z"])
+    }
 }

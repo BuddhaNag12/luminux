@@ -16,6 +16,7 @@ struct AlbumView: View {
     @State private var confirmsDelete = false
     /// Keeps the title on screen while a deleted album's page swings away.
     @State private var lastTitle = "album"
+    @State private var bottomInset: CGFloat = 0
 
     private var album: Album? { library.album(id: albumID) }
 
@@ -37,7 +38,11 @@ struct AlbumView: View {
                 .padding(.bottom, 8)
 
             AssetGrid(source: .album(albumID), selection: selection, emptyMessage: "This album is empty.", jumpTarget: .constant(nil))
+                // Runs under the app bar; the last row can still scroll clear of it.
+                .contentMargins(.bottom, bottomInset, for: .scrollContent)
+                .ignoresSafeArea(.container, edges: .bottom)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
         .foregroundStyle(metro.foreground)
         .background(metro.background)
         .onChange(of: album?.title, initial: true) { _, title in

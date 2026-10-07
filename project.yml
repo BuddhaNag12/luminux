@@ -17,6 +17,8 @@ targets:
     platform: iOS
     sources:
       - path: Luminux
+        # Local-testing products only; the scheme and the tests use it, the app never ships it.
+        excludes: [Luminux.storekit]
       - path: Shared
     dependencies:
       - target: LuminuxWidget
@@ -44,6 +46,8 @@ targets:
         NSPhotoLibraryUsageDescription: Luminux shows the photos and videos on this iPhone and lets you favorite, organize and delete them. Nothing leaves your device.
         PHPhotoLibraryPreventAutomaticLimitedAccessAlert: true
         ITSAppUsesNonExemptEncryption: false
+        # Lets animations run at 120 Hz on ProMotion screens.
+        CADisableMinimumFrameDurationOnPhone: true
         CFBundleURLTypes:
           - CFBundleURLName: com.buddhanag.luminux
             CFBundleURLSchemes: [luminux]
@@ -79,6 +83,8 @@ targets:
     platform: iOS
     sources:
       - path: LuminuxTests
+      - path: Luminux/Luminux.storekit
+        buildPhase: resources
     dependencies:
       - target: Luminux
     settings:
@@ -93,5 +99,8 @@ schemes:
       targets:
         Luminux: all
         LuminuxTests: [test]
+    run:
+      # Local App Store products, so the Pro purchase works in the simulator without App Store Connect.
+      storeKitConfiguration: Luminux/Luminux.storekit
     test:
       targets: [LuminuxTests]

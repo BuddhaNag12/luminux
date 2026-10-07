@@ -19,9 +19,18 @@ struct HubView: View {
     @Environment(PhotoLibrary.self) private var library
     @Environment(Navigator.self) private var navigator
     @Environment(AppSettings.self) private var settings
+    @Environment(ProStore.self) private var store
     @Environment(\.metro) private var metro
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var isAppBarExpanded = false
+    @State private var tilt = PhoneTilt()
+
+    /// Motion runs only while the hub is on screen.
+    private var tracksTilt: Bool {
+        settings.movesWithPhone && !reduceMotion && scenePhase == .active && navigator.path.isEmpty && navigator.viewer == nil
+    }
 
     private let tileColumns = [GridItem(.flexible(), spacing: MetroMetrics.gutter), GridItem(.flexible(), spacing: MetroMetrics.gutter)]
     private let photoColumns = Array(repeating: GridItem(.flexible(), spacing: MetroMetrics.gutter), count: 3)
@@ -35,12 +44,23 @@ struct HubView: View {
             PanoramaSection("favorites") {
                 photoGrid(.favorites, limit: 60, empty: "No favorites yet. Tap the heart on a photo to add it here.")
             }
+            if !store.isUnlocked {
+                PanoramaSection("pro") {
+                    ProPitch(firstRow: 2)
+                        .padding(.trailing, MetroMetrics.margin + 12)
+                }
+            }
         } background: {
             if settings.showsHubBackground {
                 HubBackground()
             }
         }
         .metroAppBar([], menu: menu, isExpanded: $isAppBarExpanded)
+        .environment(tilt)
+        .onChange(of: tracksTilt, initial: true) { _, tracks in
+            tracks ? tilt.start() : tilt.stop()
+        }
+        .onDisappear { tilt.stop() }
     }
 
     private var menu: [AppBarMenuItem] {
@@ -83,6 +103,8 @@ struct HubView: View {
                 .metroFeather(row: 3, column: 1)
             }
             .padding(.trailing, MetroMetrics.margin)
+            // The tiles drift against the background, so they seem to float above it.
+            .tiltParallax(-5)
 
             if library.access == .limited {
                 VStack(alignment: .leading, spacing: 12) {
@@ -160,6 +182,9 @@ private struct HubBackground: View {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
+                        // Oversized so the tilt never shows an edge.
+                        .scaleEffect(1.08)
+                        .tiltParallax(14)
                         .transition(.opacity)
                 }
             }

@@ -34,11 +34,12 @@ struct TileEntry: TimelineEntry {
     let imageURLs: [URL]
     let accentHex: UInt32
     let title: String
+    let isPro: Bool
 }
 
 struct TileProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> TileEntry {
-        TileEntry(date: .now, imageURLs: [], accentHex: LiveTileStore.accentHex, title: "photos")
+        TileEntry(date: .now, imageURLs: [], accentHex: LiveTileStore.accentHex, title: "photos", isPro: true)
     }
 
     func snapshot(for configuration: TileConfigurationIntent, in context: Context) async -> TileEntry {
@@ -61,7 +62,8 @@ struct TileProvider: AppIntentTimelineProvider {
             date: date,
             imageURLs: rotated,
             accentHex: LiveTileStore.accentHex,
-            title: configuration.source == .recent ? "photos" : "favorites"
+            title: configuration.source == .recent ? "photos" : "favorites",
+            isPro: LiveTileStore.isPro
         )
     }
 }
@@ -71,7 +73,6 @@ struct PhotosLiveTile: Widget {
         AppIntentConfiguration(kind: "PhotosLiveTile", intent: TileConfigurationIntent.self, provider: TileProvider()) { entry in
             TileView(entry: entry)
                 .containerBackground(for: .widget) { Color(hex: entry.accentHex) }
-                .widgetURL(URL(string: "luminux://hub"))
         }
         .configurationDisplayName("Photos")
         .description("A live tile of your recent photos or favorites.")
@@ -84,7 +85,34 @@ struct TileView: View {
     let entry: TileEntry
     @Environment(\.widgetFamily) private var family
 
+    /// The medium and large tiles come with Luminux Pro; the small one is free.
+    private var isLocked: Bool { family != .systemSmall && !entry.isPro }
+
     var body: some View {
+        if isLocked {
+            lockedFace.widgetURL(URL(string: "luminux://pro"))
+        } else {
+            tile.widgetURL(URL(string: "luminux://hub"))
+        }
+    }
+
+    private var lockedFace: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: "lock")
+                .font(.system(size: 22, weight: .light))
+            Spacer()
+            Text("Wide tiles come with Luminux Pro. Tap to see what it adds.")
+                .font(.custom("Selawik-Semilight", size: 15))
+            Text("photos")
+                .font(.custom("Selawik-Semilight", size: 15))
+                .opacity(0.7)
+        }
+        .foregroundStyle(.white)
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var tile: some View {
         ZStack(alignment: .bottomLeading) {
             if entry.imageURLs.isEmpty {
                 Image(systemName: "photo.on.rectangle")

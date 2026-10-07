@@ -56,7 +56,7 @@ struct JumpListView: View {
                                     sectionID: year.sectionIDs[month],
                                     isCurrent: current?.year == year.year && current?.month == month
                                 )
-                                .metroFeather(row: position * 4 + 1 + (month - 1) / 4, column: (month - 1) % 4, spacing: 6)
+                                .metroFeather(row: position * 4 + 1 + (month - 1) / 4, column: (month - 1) % 4)
                             }
                         }
                     }

@@ -10,5 +10,6 @@ enum MetroMotion {
 
     /// Parallax speeds relative to the content scroll.
     static let backgroundParallax: CGFloat = 0.3
-    static let titleParallax: CGFloat = 0.5
+    /// How much of the panorama title has slid off the screen by the last panel.
+    static let titleTravel: CGFloat = 0.56
 }

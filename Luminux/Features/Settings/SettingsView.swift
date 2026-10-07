@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(ProStore.self) private var store
+    @Environment(Navigator.self) private var navigator
     @Environment(\.metro) private var metro
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
@@ -46,8 +48,13 @@ struct SettingsView: View {
                 .metroFeather(row: 3)
                 LazyVGrid(columns: columns, spacing: 8) {
                     ForEach(Array(Accent.allCases.enumerated()), id: \.element) { index, accent in
+                        let isLocked = !accent.isFree && !store.isUnlocked
                         Button {
-                            withAnimation(MetroMotion.fade) { settings.accent = accent }
+                            if isLocked {
+                                navigator.push(.pro)
+                            } else {
+                                withAnimation(MetroMotion.fade) { settings.accent = accent }
+                            }
                         } label: {
                             accent.color
                                 .aspectRatio(1, contentMode: .fit)
@@ -59,10 +66,18 @@ struct SettingsView: View {
                                             .foregroundStyle(.white)
                                     }
                                 }
+                                .overlay(alignment: .bottomTrailing) {
+                                    if isLocked {
+                                        Image(systemName: "lock.fill")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.white.opacity(0.85))
+                                            .padding(6)
+                                    }
+                                }
                         }
                         .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
-                        .metroFeather(row: 4 + index / 4, column: index % 4, spacing: 8)
-                        .accessibilityLabel(accent.rawValue)
+                        .metroFeather(row: 4 + index / 4, column: index % 4)
+                        .accessibilityLabel(isLocked ? "\(accent.rawValue), needs Luminux Pro" : accent.rawValue)
                         .accessibilityAddTraits(settings.accent == accent ? .isSelected : [])
                     }
                 }
@@ -81,6 +96,30 @@ struct SettingsView: View {
                         .padding(.top, 6)
                 }
                 .metroFeather(row: 10)
+                .padding(.bottom, 20)
+                Group {
+                    Toggle("move the hub with the phone", isOn: $settings.movesWithPhone)
+                        .toggleStyle(MetroToggleStyle())
+                    Text("The background photo and tiles shift a little as you tilt the phone. Off when Reduce Motion is on.")
+                        .font(.metroCaption)
+                        .foregroundStyle(metro.secondary)
+                        .padding(.top, 6)
+                }
+                .metroFeather(row: 11)
+                .padding(.bottom, 28)
+
+                label("luminux pro")
+                    .metroFeather(row: 12)
+                Group {
+                    if store.isUnlocked {
+                        Text("Unlocked. Thank you for supporting Luminux.")
+                            .font(.metroBody)
+                    } else {
+                        Button("see what pro adds") { navigator.push(.pro) }
+                            .buttonStyle(.metro)
+                    }
+                }
+                .metroFeather(row: 13)
             }
             .padding(.horizontal, MetroMetrics.margin + 12)
             .padding(.top, 16)

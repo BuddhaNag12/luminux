@@ -17,6 +17,8 @@ struct AppSettingsTests {
         #expect(settings.accent == .cobalt)
         #expect(settings.showsHubBackground)
         #expect(settings.playsLivingImages)
+        #expect(settings.gridColumns == 4)
+        #expect(settings.movesWithPhone)
     }
 
     @Test func persistsChanges() {

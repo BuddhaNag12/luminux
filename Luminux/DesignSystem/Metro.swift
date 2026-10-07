@@ -51,6 +51,8 @@ struct MetroPalette: Equatable {
     var secondary: Color { theme == .dark ? Color(hex: 0xA0A0A0) : Color(hex: 0x666666) }
     /// App bar and empty-tile fill.
     var chrome: Color { theme == .dark ? Color(hex: 0x1F1F1F) : Color(hex: 0xDDDDDD) }
+    /// Lets the photos scrolling underneath show through, darkened, like the original app bar.
+    var appBar: Color { theme == .dark ? Color(hex: 0x1F1F1F).opacity(0.72) : Color(hex: 0xDDDDDD).opacity(0.8) }
     var accentColor: Color { accent.color }
 }
 

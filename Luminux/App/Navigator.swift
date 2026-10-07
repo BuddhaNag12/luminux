@@ -4,6 +4,7 @@ enum Route: Hashable {
     case collection(page: Int, showsJumpList: Bool = false)
     case album(String)
     case settings
+    case pro
 }
 
 struct ViewerRequest: Identifiable, Hashable {
@@ -35,10 +36,10 @@ final class Navigator {
             withAnimation(MetroMotion.standard) { _ = path.removeLast() }
             return
         }
-        // Feather the page out first, then drop it without a second transition.
+        // Let the page's items sink away first, then drop it without a second transition.
         isLeaving = true
         Task {
-            try? await Task.sleep(for: .milliseconds(340))
+            try? await Task.sleep(for: .seconds(Feather.exitTime))
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
@@ -79,7 +80,7 @@ private struct ZoomSourceModifier: ViewModifier {
     }
 }
 
-/// Page stack with turnstile transitions and an interactive swipe from the left edge to go back.
+/// Page stack: pages' items rise in and out in staggered waves, and a swipe from the left edge slides the page away.
 struct MetroStack<Root: View, Destination: View>: View {
     @ViewBuilder var root: Root
     @ViewBuilder var destination: (Route) -> Destination
@@ -94,11 +95,8 @@ struct MetroStack<Root: View, Destination: View>: View {
             page(depth: 0) { root }
             ForEach(Array(navigator.path.enumerated()), id: \.offset) { index, route in
                 page(depth: index + 1) { destination(route) }
-                    .transition(.asymmetric(
-                        // The page's own tiles feather in; the whole-page turn is only for finishing the back swipe.
-                        insertion: .identity,
-                        removal: .metroPage(.backward, reduceMotion: reduceMotion)
-                    ))
+                    // Items animate themselves; pages only cross-fade with Reduce Motion.
+                    .transition(reduceMotion ? .opacity : .identity)
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = max($0, 1) }
@@ -121,38 +119,31 @@ struct MetroStack<Root: View, Destination: View>: View {
         let isDragging = backProgress > 0
         let revealsUnder = isDragging || navigator.isLeaving
 
-        // Pushes and pops feather each page's tiles; only the back swipe turns whole pages, following the finger.
-        let pageAngle: Double = if reduceMotion || !isDragging {
-            0
-        } else if isTop {
-            -80 * backProgress
-        } else {
-            Feather.coverAngle * (1 - backProgress)
-        }
-        let featherAngle: Double = if isLeaving {
-            Feather.leaveAngle
+        let itemState: FeatherState = if isLeaving {
+            .below
         } else if isTop || (isUnder && revealsUnder) {
-            0
+            .shown
         } else {
-            Feather.coverAngle
+            .above
         }
-        let isCovered = !isTop && !(isUnder && revealsUnder)
+        let isCovered = itemState == .above
         let opacity: Double = if isTop {
-            isLeaving ? 0 : 1 - backProgress * 0.6
-        } else if isUnder {
+            isLeaving ? 0 : 1 - backProgress * 0.5
+        } else if isUnder && revealsUnder {
             navigator.isLeaving ? 1 : backProgress
         } else {
             0
         }
 
+        // Only offset and opacity change, so the hub's photo background keeps covering the safe areas.
         return content()
-            .featherScope(coveredAngle: featherAngle)
-            .perspectiveRotation(pageAngle, axis: (x: 0, y: 1, z: 0), anchor: .leading, perspective: 0.7)
+            .featherScope(itemState)
+            .offset(x: isTop ? backProgress * width : 0)
             .opacity(opacity)
-            // Leaving and covered pages keep their background until their tiles have swung away.
-            .animation(isLeaving ? .easeIn(duration: 0.14).delay(0.16) : MetroMotion.standard, value: isLeaving)
-            .animation(isCovered ? .easeIn(duration: 0.1).delay(0.2) : MetroMotion.standard, value: isCovered)
-            .allowsHitTesting(isTop && !isLeaving)
+            // Leaving and covered pages keep their background until their items have moved away.
+            .animation(isLeaving ? .easeIn(duration: 0.12).delay(Feather.exitTime - 0.12) : MetroMotion.standard, value: isLeaving)
+            .animation(isCovered ? .easeIn(duration: 0.1).delay(Feather.coverFadeDelay) : MetroMotion.standard, value: isCovered)
+            .allowsHitTesting(isTop && !isLeaving && !isDragging)
             .accessibilityHidden(!isTop)
             .zIndex(Double(depth))
     }
@@ -165,9 +156,16 @@ struct MetroStack<Root: View, Destination: View>: View {
             .onEnded { value in
                 let projected = value.predictedEndTranslation.width / width
                 if projected > 0.45 {
-                    withAnimation(MetroMotion.standard) {
-                        backProgress = 0
-                        _ = navigator.path.removeLast()
+                    // Finish the slide, then drop the page without a second animation.
+                    withAnimation(.spring(response: 0.3, dampingFraction: 1)) {
+                        backProgress = 1
+                    } completion: {
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            _ = navigator.path.removeLast()
+                            backProgress = 0
+                        }
                     }
                 } else {
                     withAnimation(MetroMotion.release) { backProgress = 0 }

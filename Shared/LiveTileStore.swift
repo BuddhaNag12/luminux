@@ -4,6 +4,7 @@ import Foundation
 nonisolated enum LiveTileStore {
     static let appGroup = "group.com.buddhanag.luminux"
     static let accentKey = "accentHex"
+    static let proKey = "isPro"
     static let maxImages = 6
 
     enum Source: String, CaseIterable, Sendable {
@@ -37,5 +38,11 @@ nonisolated enum LiveTileStore {
     static var accentHex: UInt32 {
         get { (defaults?.object(forKey: accentKey) as? Int).map(UInt32.init) ?? 0x0050EF }
         set { defaults?.set(Int(newValue), forKey: accentKey) }
+    }
+
+    /// Whether Luminux Pro is unlocked, so the widget can offer its medium and large tiles.
+    static var isPro: Bool {
+        get { defaults?.bool(forKey: proKey) ?? false }
+        set { defaults?.set(newValue, forKey: proKey) }
     }
 }

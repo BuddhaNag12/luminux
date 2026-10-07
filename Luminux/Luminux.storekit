@@ -1,0 +1,33 @@
+{
+  "identifier" : "6F1D2C3B",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : true,
+      "internalID" : "6754000001",
+      "localizations" : [
+        {
+          "description" : "Every accent, wide live tiles, slideshow and editing.",
+          "displayName" : "Luminux Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.buddhanag.luminux.pro",
+      "referenceName" : "Luminux Pro",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

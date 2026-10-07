@@ -5,6 +5,7 @@ struct LuminuxApp: App {
     @State private var settings = AppSettings()
     @State private var library = PhotoLibrary()
     @State private var navigator = Navigator()
+    @State private var store = ProStore()
 
     var body: some Scene {
         WindowGroup {
@@ -12,6 +13,7 @@ struct LuminuxApp: App {
                 .environment(settings)
                 .environment(library)
                 .environment(navigator)
+                .environment(store)
                 .environment(\.metro, settings.palette)
                 .tint(settings.accent.color)
                 .preferredColorScheme(settings.theme.colorScheme)
@@ -47,6 +49,7 @@ private struct AppShell: View {
     @Environment(Navigator.self) private var navigator
     @Environment(PhotoLibrary.self) private var library
     @Environment(AppSettings.self) private var settings
+    @Environment(ProStore.self) private var store
     @Namespace private var zoom
 
     var body: some View {
@@ -62,6 +65,8 @@ private struct AppShell: View {
                 AlbumView(albumID: id)
             case .settings:
                 SettingsView()
+            case .pro:
+                ProView()
             }
         }
         .environment(\.zoomNamespace, zoom)
@@ -69,10 +74,17 @@ private struct AppShell: View {
             ViewerView(request: request)
                 .navigationTransition(.zoom(sourceID: navigator.viewerCurrentID ?? request.startID, in: zoom))
         }
-        .onOpenURL { _ in
-            // The live tile opens the hub.
+        .onOpenURL { url in
+            // The live tile opens the hub; a locked wide tile opens the Pro page.
             navigator.viewer = nil
-            navigator.path = []
+            navigator.path = url.host() == "pro" && !store.isUnlocked ? [.pro] : []
+        }
+        .task {
+            await store.refresh()
+        }
+        .onChange(of: store.isUnlocked) { _, unlocked in
+            // A refunded purchase takes its accent with it.
+            if !unlocked && !settings.accent.isFree { settings.accent = .cobalt }
         }
         .task(id: TileRefreshKey(changeToken: library.changeToken, accent: settings.accent)) {
             guard library.isLoaded else { return }

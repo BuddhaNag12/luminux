@@ -149,7 +149,7 @@ struct AlbumsGrid: View {
                         }
                     }
                     .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
-                    .metroFeather(row: index / 2, column: index % 2, spacing: 12)
+                    .metroFeather(row: index / 2, column: index % 2)
                 }
             }
             .padding(.bottom, 24)

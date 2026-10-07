@@ -9,6 +9,7 @@ struct ViewerView: View {
     @Environment(Navigator.self) private var navigator
     @Environment(\.metro) private var metro
     @Environment(\.dismiss) private var dismiss
+    @Environment(ProStore.self) private var store
     @State private var index: Int?
     @State private var showsChrome = true
     @State private var isAppBarExpanded = false
@@ -17,6 +18,7 @@ struct ViewerView: View {
     @State private var isZoomed = false
     @State private var editing: AssetItem?
     @State private var showsSlideshow = false
+    @State private var showsPro = false
     @State private var dismissDrag: CGFloat = 0
     /// How much of the details panel is showing; the panel is open when this rests at `panelHeight`.
     @State private var detailsLift: CGFloat = 0
@@ -138,6 +140,9 @@ struct ViewerView: View {
         .fullScreenCover(isPresented: $showsSlideshow) {
             SlideshowView(source: request.source, startIndex: index ?? 0)
         }
+        .fullScreenCover(isPresented: $showsPro) {
+            ProView { showsPro = false }
+        }
     }
 
     /// Down past the start closes the viewer, up reveals details; with details open, the same drag moves the panel.
@@ -205,7 +210,9 @@ struct ViewerView: View {
             },
         ]
         if asset.supportsLuminuxEdits {
-            buttons.append(AppBarButton(title: "edit", systemImage: "crop.rotate") { editing = AssetItem(asset: asset) })
+            buttons.append(AppBarButton(title: "edit", systemImage: "crop.rotate") {
+                withPro { editing = AssetItem(asset: asset) }
+            })
         }
         buttons.append(AppBarButton(title: "delete", systemImage: "trash") {
             Task { try? await library.delete([asset]) }
@@ -213,15 +220,24 @@ struct ViewerView: View {
         return buttons
     }
 
+    /// Runs a Pro feature, or shows what Pro adds when it isn't unlocked yet.
+    private func withPro(_ action: () -> Void) {
+        if store.isUnlocked {
+            action()
+        } else {
+            showsPro = true
+        }
+    }
+
     private func menu(for asset: PHAsset) -> [AppBarMenuItem] {
         var items: [AppBarMenuItem] = []
         if asset.supportsLuminuxEdits {
             items.append(AppBarMenuItem(title: "rotate") {
-                Task { try? await library.applyEdit(EditRecipe(quarterTurns: 1), to: asset) }
+                withPro { Task { try? await library.applyEdit(EditRecipe(quarterTurns: 1), to: asset) } }
             })
         }
         items.append(AppBarMenuItem(title: "add to album") { addToAlbum = AddToAlbumRequest(assets: [asset]) })
-        items.append(AppBarMenuItem(title: "slideshow") { showsSlideshow = true })
+        items.append(AppBarMenuItem(title: "slideshow") { withPro { showsSlideshow = true } })
         items.append(AppBarMenuItem(title: "details") { setDetails(open: true) })
         if asset.hasAdjustments && asset.canPerform(.content) {
             items.append(AppBarMenuItem(title: "revert to original") {

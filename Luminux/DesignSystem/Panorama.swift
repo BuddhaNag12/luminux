@@ -16,11 +16,22 @@ struct Panorama<Background: View, Content: View>: View {
     static var peek: CGFloat { 44 }
 
     @State private var offset: CGFloat = 0
+    @State private var maxOffset: CGFloat = 0
     @State private var titleWidth: CGFloat = 0
+    /// What the app bar and home indicator cover, measured before the panels extend under them.
+    @State private var bottomInset: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.metro) private var metro
 
     private var parallaxOffset: CGFloat { reduceMotion ? 0 : max(offset, 0) }
+
+    /// The title slides off the left edge a little more on every panel ("photos", "otos", "tos"), so it keeps moving
+    /// to the last panel instead of stopping early.
+    private var titleShift: CGFloat {
+        guard maxOffset > 0 else { return 0 }
+        let progress = min(parallaxOffset / maxOffset, 1)
+        return progress * (MetroMetrics.margin + 4 + titleWidth * MetroMotion.titleTravel)
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -33,8 +44,7 @@ struct Panorama<Background: View, Content: View>: View {
                     .fixedSize()
                     .padding(.leading, MetroMetrics.margin + 4)
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { titleWidth = $0 }
-                    // Stops once only the last letters are left on screen.
-                    .offset(x: -min(parallaxOffset * MetroMotion.titleParallax, max(titleWidth - 120, 0)))
+                    .offset(x: -titleShift)
                     .frame(width: geo.size.width, alignment: .leading)
                     .clipped()
                     .metroFeather(row: 0)
@@ -43,7 +53,9 @@ struct Panorama<Background: View, Content: View>: View {
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 0) {
                         ForEach(subviews: content) { panel in
-                            panel.frame(width: panelWidth, alignment: .topLeading)
+                            panel
+                                .contentMargins(.bottom, bottomInset, for: .scrollContent)
+                                .frame(width: panelWidth, alignment: .topLeading)
                         }
                     }
                     .scrollTargetLayout()
@@ -55,7 +67,15 @@ struct Panorama<Background: View, Content: View>: View {
                 } action: { _, newValue in
                     offset = newValue
                 }
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentSize.width - geometry.containerSize.width
+                } action: { _, newValue in
+                    maxOffset = newValue
+                }
+                // Panels run under the app bar; their content can still scroll clear of it.
+                .ignoresSafeArea(.container, edges: .bottom)
             }
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
         }
         .foregroundStyle(metro.foreground)
         .background {

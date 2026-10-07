@@ -19,6 +19,8 @@ struct Pivot<Content: View>: View {
     @State private var progress: CGFloat = 0
     @State private var scrolledPage: Int?
     @State private var headerWidths: [Int: CGFloat] = [:]
+    /// What the app bar and home indicator cover, measured before the pages extend under them.
+    @State private var bottomInset: CGFloat = 0
     @Environment(\.metro) private var metro
 
     private static var headerSpacing: CGFloat { 24 }
@@ -43,6 +45,8 @@ struct Pivot<Content: View>: View {
                         LazyHStack(spacing: 0) {
                             ForEach(pages.indices, id: \.self) { index in
                                 pages[index]
+                                    // Pages run under the app bar; their last row can still scroll clear of it.
+                                    .contentMargins(.bottom, bottomInset, for: .scrollContent)
                                     .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
                                     .id(index)
                             }
@@ -58,7 +62,9 @@ struct Pivot<Content: View>: View {
                         progress = newValue
                     }
                 }
+                .ignoresSafeArea(.container, edges: .bottom)
             }
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
         }
         .foregroundStyle(metro.foreground)
         .background(metro.background)
