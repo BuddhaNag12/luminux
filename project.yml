@@ -83,7 +83,7 @@ targets:
             CFBundleURLSchemes: [luminux]
         # The Luminux AdMob app and its ad units. Debug and test builds use Google's test units instead (AdConsent).
         GADApplicationIdentifier: ca-app-pub-7154730975495885~4556038621
-        LuminuxRewardedAdUnitID: ""
+        LuminuxRewardedAdUnitID: ca-app-pub-7154730975495885/4622478072
         # For the parked news panel.
         LuminuxNativeAdUnitID: ca-app-pub-7154730975495885/5809410542
         # The news proxy (Server/news-worker). Empty shows sample headlines in debug and test builds only.
