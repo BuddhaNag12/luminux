@@ -12,24 +12,34 @@ struct ProStoreTests {
         return session
     }
 
+    /// The local StoreKit service catches up asynchronously (most of all on a bundle's first run), so give it a moment.
+    private func refresh(_ store: ProStore, until condition: () -> Bool) async {
+        for _ in 0..<20 {
+            await store.refresh()
+            if condition() { return }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
     @Test func loadsTheProductLocked() async throws {
         _ = try freshSession()
         let store = ProStore()
-        await store.refresh()
+        await refresh(store) { store.product != nil }
 
         #expect(store.product?.id == ProStore.productID)
         #expect(!store.isUnlocked)
     }
 
-    @Test func buyingUnlocksAndClearingLocksAgain() async throws {
+    @Test func buyingUnlocksAndARefundLocksAgain() async throws {
         let session = try freshSession()
         let store = ProStore()
         try await session.buyProduct(identifier: ProStore.productID)
-        await store.refresh()
+        await refresh(store) { store.isUnlocked }
         #expect(store.isUnlocked)
 
-        session.clearTransactions()
-        await store.refresh()
+        let purchase = try #require(session.allTransactions().first { $0.productIdentifier == ProStore.productID })
+        try session.refundTransaction(identifier: purchase.identifier)
+        await refresh(store) { !store.isUnlocked }
         #expect(!store.isUnlocked)
     }
 

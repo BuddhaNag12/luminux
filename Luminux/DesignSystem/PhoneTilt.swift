@@ -11,7 +11,7 @@ final class PhoneTilt {
     @ObservationIgnored private var rest: CMAcceleration?
 
     /// Gravity change (in g) that counts as a full tilt.
-    private static let fullTilt = 0.3
+    private static let fullTilt = 0.25
     /// How quickly the effect follows the phone, and how quickly a new way of holding it becomes the centre.
     private static let follow = 0.18
     private static let recentre = 0.01

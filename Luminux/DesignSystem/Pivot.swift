@@ -21,9 +21,21 @@ struct Pivot<Content: View>: View {
     @State private var headerWidths: [Int: CGFloat] = [:]
     /// What the app bar and home indicator cover, measured before the pages extend under them.
     @State private var bottomInset: CGFloat = 0
+    /// The pages beside the first one stay hidden until the pivot is swiped or a header tapped; the push animates
+    /// the jump to the opening page, which would drag its neighbour across the screen while the tiles turn in.
+    @State private var showsNeighbours = false
     @Environment(\.metro) private var metro
 
     private static var headerSpacing: CGFloat { 24 }
+
+    init(overline: String? = nil, selection: Binding<Int>, @ViewBuilder content: () -> Content) {
+        self.overline = overline
+        _selection = selection
+        self.content = content()
+        // Starting on the requested page at first layout (not jumping there on appear) builds that page in time
+        // for the feather, so its tiles turn in instead of popping up flat.
+        _scrolledPage = State(initialValue: selection.wrappedValue)
+    }
 
     var body: some View {
         Group(subviews: content) { pages in
@@ -45,6 +57,12 @@ struct Pivot<Content: View>: View {
                         LazyHStack(spacing: 0) {
                             ForEach(pages.indices, id: \.self) { index in
                                 pages[index]
+                                    // Only the page on screen feathers. The others sit off screen, and turning on the
+                                    // screen-edge hinge would swing their tiles into view.
+                                    .transformEnvironment(\.feather) { context in
+                                        if index != (scrolledPage ?? selection) { context = FeatherContext() }
+                                    }
+                                    .opacity(showsNeighbours || index == selection ? 1 : 0)
                                     // Pages run under the app bar; their last row can still scroll clear of it.
                                     .contentMargins(.bottom, bottomInset, for: .scrollContent)
                                     .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
@@ -55,6 +73,9 @@ struct Pivot<Content: View>: View {
                     }
                     .scrollTargetBehavior(.paging)
                     .scrollPosition(id: $scrolledPage)
+                    .onScrollPhaseChange { _, phase in
+                        if phase != .idle { showsNeighbours = true }
+                    }
                     .scrollIndicators(.hidden)
                     .onScrollGeometryChange(for: CGFloat.self) { geometry in
                         geometry.contentOffset.x / max(geometry.containerSize.width, 1)
@@ -68,12 +89,12 @@ struct Pivot<Content: View>: View {
         }
         .foregroundStyle(metro.foreground)
         .background(metro.background)
-        .onAppear { scrolledPage = selection }
         .onChange(of: scrolledPage) { _, page in
             if let page, page != selection { selection = page }
         }
         .onChange(of: selection) { _, page in
             guard page != scrolledPage else { return }
+            showsNeighbours = true
             withAnimation(MetroMotion.standard) { scrolledPage = page }
         }
     }

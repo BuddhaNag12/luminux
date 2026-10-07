@@ -104,7 +104,7 @@ struct HubView: View {
             }
             .padding(.trailing, MetroMetrics.margin)
             // The tiles drift against the background, so they seem to float above it.
-            .tiltParallax(-5)
+            .tiltParallax(-8)
 
             if library.access == .limited {
                 VStack(alignment: .leading, spacing: 12) {
@@ -183,8 +183,8 @@ private struct HubBackground: View {
                         .resizable()
                         .scaledToFill()
                         // Oversized so the tilt never shows an edge.
-                        .scaleEffect(1.08)
-                        .tiltParallax(14)
+                        .scaleEffect(1.1)
+                        .tiltParallax(22)
                         .transition(.opacity)
                 }
             }

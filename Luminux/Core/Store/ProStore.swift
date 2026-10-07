@@ -31,6 +31,10 @@ final class ProStore {
         if product == nil {
             product = try? await Product.products(for: [Self.productID]).first
         }
+        await checkEntitlement()
+    }
+
+    private func checkEntitlement() async {
         var unlocked = false
         for await result in StoreKit.Transaction.currentEntitlements {
             if case .verified(let transaction) = result, transaction.productID == Self.productID, transaction.revocationDate == nil {
@@ -77,8 +81,9 @@ final class ProStore {
 
     private func handle(_ result: VerificationResult<StoreKit.Transaction>) async {
         guard case .verified(let transaction) = result, transaction.productID == Self.productID else { return }
-        setUnlocked(transaction.revocationDate == nil)
         await transaction.finish()
+        // Updates can arrive out of order (a late purchase after a refund), so ask for the current state instead.
+        await checkEntitlement()
     }
 
     private func setUnlocked(_ unlocked: Bool) {
