@@ -6,6 +6,7 @@ struct LuminuxApp: App {
     @State private var library = PhotoLibrary()
     @State private var navigator = Navigator()
     @State private var store = ProStore()
+    @State private var journal = Journal()
 
     var body: some Scene {
         WindowGroup {
@@ -14,6 +15,7 @@ struct LuminuxApp: App {
                 .environment(library)
                 .environment(navigator)
                 .environment(store)
+                .environment(journal)
                 .environment(\.metro, settings.palette)
                 .tint(settings.accent.color)
                 .preferredColorScheme(settings.theme.colorScheme)
@@ -50,6 +52,7 @@ private struct AppShell: View {
     @Environment(PhotoLibrary.self) private var library
     @Environment(AppSettings.self) private var settings
     @Environment(ProStore.self) private var store
+    @Environment(Journal.self) private var journal
     @Namespace private var zoom
 
     var body: some View {
@@ -69,6 +72,10 @@ private struct AppShell: View {
                 ProView()
             case .about:
                 AboutView()
+            case .journal:
+                JournalView()
+            case .journalEntry(let id):
+                JournalEntryView(entryID: id)
             }
         }
         .environment(\.zoomNamespace, zoom)
@@ -84,6 +91,15 @@ private struct AppShell: View {
         .task {
             await store.refresh()
         }
+        .task(id: JournalRefreshKey(changeToken: library.changeToken, namesPlaces: settings.namesJournalPlaces)) {
+            guard library.isLoaded else { return }
+            journal.usesPlaceNames = settings.namesJournalPlaces
+            // Debounce bursts of library changes, like the live tile.
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            await journal.rebuild()
+            if settings.namesJournalPlaces { await journal.lookUpPlaces() }
+        }
         .onChange(of: store.unlocksCustomAccent) { _, unlocked in
             // A refunded purchase takes its custom colour with it.
             if !unlocked && !settings.accent.isPreset { settings.accent = .cobalt }
@@ -96,6 +112,11 @@ private struct AppShell: View {
             await LiveTileExporter.export(from: library, accent: settings.accent)
         }
     }
+}
+
+private struct JournalRefreshKey: Equatable {
+    let changeToken: Int
+    let namesPlaces: Bool
 }
 
 private struct TileRefreshKey: Equatable {

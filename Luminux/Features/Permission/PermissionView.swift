@@ -25,7 +25,7 @@ struct PermissionView: View {
 
             Text(isDenied
                  ? "To browse your photos here, turn on photo access for Luminux in Settings."
-                 : "Luminux shows the photos and videos already on this iPhone. Nothing leaves your device.")
+                 : "Luminux shows the photos and videos already on this iPhone. Your photos never leave it; only to name places in your journal does it ask Apple Maps about photo locations, and you can turn that off in settings.")
                 .font(.metroBody)
                 .foregroundStyle(metro.secondary)
                 .padding(.top, 12)

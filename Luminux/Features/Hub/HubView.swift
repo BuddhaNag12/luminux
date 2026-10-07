@@ -20,6 +20,7 @@ struct HubView: View {
     @Environment(Navigator.self) private var navigator
     @Environment(AppSettings.self) private var settings
     @Environment(ProStore.self) private var store
+    @Environment(Journal.self) private var journal
     @Environment(\.metro) private var metro
     @Environment(\.displayScale) private var displayScale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -41,6 +42,7 @@ struct HubView: View {
             PanoramaSection("what's new") {
                 photoGrid(.recent, limit: 60, empty: "No photos from the last 30 days.")
             }
+            PanoramaSection("journal") { journalPanel }
             PanoramaSection("favorites") {
                 photoGrid(.favorites, limit: 60, empty: "No favorites yet. Tap the heart on a photo to add it here.")
             }
@@ -116,6 +118,23 @@ struct HubView: View {
                 }
             }
         }
+    }
+
+    /// The latest few entries; the journal page has the rest.
+    private var journalPanel: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            if journal.entries.isEmpty {
+                JournalPlaceholder().metroFeather(row: 2)
+            } else {
+                ForEach(Array(journal.entries.prefix(3).enumerated()), id: \.element.id) { index, entry in
+                    JournalEntryTile(entry: entry).metroFeather(row: 2 + index)
+                }
+                Button("see all") { navigator.push(.journal) }
+                    .buttonStyle(.metro)
+                    .metroFeather(row: 5)
+            }
+        }
+        .padding(.trailing, MetroMetrics.margin + 12)
     }
 
     private var dateFace: some View {

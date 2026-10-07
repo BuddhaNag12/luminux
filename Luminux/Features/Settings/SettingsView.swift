@@ -96,6 +96,16 @@ struct SettingsView: View {
                         .padding(.top, 6)
                 }
                 .metroFeather(row: 11)
+                .padding(.bottom, 20)
+                Group {
+                    Toggle("name places in the journal", isOn: $settings.namesJournalPlaces)
+                        .toggleStyle(MetroToggleStyle())
+                    Text("Asks Apple Maps where photos away from home were taken, for titles like \"trip to goa\". Only locations are sent, never photos.")
+                        .font(.metroCaption)
+                        .foregroundStyle(metro.secondary)
+                        .padding(.top, 6)
+                }
+                .metroFeather(row: 12)
                 .padding(.bottom, 28)
 
                 label("luminux pro")

@@ -43,7 +43,7 @@ targets:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIAppFonts: [selawk.ttf, selawkl.ttf, selawksl.ttf, selawksb.ttf]
-        NSPhotoLibraryUsageDescription: Luminux shows the photos and videos on this iPhone and lets you favorite, organize and delete them. Nothing leaves your device.
+        NSPhotoLibraryUsageDescription: Luminux shows the photos and videos on this iPhone, organizes them into a journal, and lets you favorite and delete them. Your photos never leave your device.
         PHPhotoLibraryPreventAutomaticLimitedAccessAlert: true
         ITSAppUsesNonExemptEncryption: false
         # Lets animations run at 120 Hz on ProMotion screens.

@@ -6,6 +6,8 @@ import UIKit
 enum AssetSource: Hashable {
     case all, favorites, videos, recent
     case album(String)
+    /// A journal entry's photos, oldest first.
+    case identifiers([String])
 }
 
 nonisolated struct Album: Identifiable, Hashable, Sendable {
@@ -97,6 +99,14 @@ final class PhotoLibrary: NSObject {
             else { return PHFetchResult() }
             let result = PHAsset.fetchAssets(in: collection, options: Self.newestFirst())
             albumCache[id] = result
+            return result
+        case .identifiers(let ids):
+            let key = ids.joined(separator: "|")
+            if let cached = albumCache[key] { return cached }
+            let options = PHFetchOptions()
+            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+            let result = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: options)
+            albumCache[key] = result
             return result
         }
     }
