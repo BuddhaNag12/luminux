@@ -94,6 +94,24 @@ struct SettingsView: View {
                         .font(.metroCaption)
                         .foregroundStyle(metro.secondary)
                         .padding(.top, 6)
+                    if settings.movesWithPhone {
+                        HStack(spacing: 12) {
+                            ForEach(TiltStrength.allCases) { strength in
+                                Button(strength.rawValue) {
+                                    withAnimation(MetroMotion.fade) { settings.tiltStrength = strength }
+                                }
+                                .buttonStyle(.metro)
+                                .overlay {
+                                    if settings.tiltStrength == strength {
+                                        Rectangle().strokeBorder(metro.accentColor, lineWidth: 2)
+                                    }
+                                }
+                                .accessibilityLabel("\(strength.rawValue) movement")
+                                .accessibilityAddTraits(settings.tiltStrength == strength ? .isSelected : [])
+                            }
+                        }
+                        .padding(.top, 12)
+                    }
                 }
                 .metroFeather(row: 11)
                 .padding(.bottom, 20)

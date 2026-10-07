@@ -19,6 +19,7 @@ struct AppSettingsTests {
         #expect(settings.playsLivingImages)
         #expect(settings.gridColumns == 4)
         #expect(settings.movesWithPhone)
+        #expect(settings.tiltStrength == .medium)
     }
 
     @Test func persistsChanges() {

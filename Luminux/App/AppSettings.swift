@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Observation
 
@@ -11,6 +12,7 @@ final class AppSettings {
         static let gridColumns = "gridColumns"
         static let movesWithPhone = "movesWithPhone"
         static let namesJournalPlaces = "namesJournalPlaces"
+        static let tiltStrength = "tiltStrength"
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -40,6 +42,10 @@ final class AppSettings {
         didSet { defaults.set(movesWithPhone, forKey: Key.movesWithPhone) }
     }
 
+    var tiltStrength: TiltStrength {
+        didSet { defaults.set(tiltStrength.rawValue, forKey: Key.tiltStrength) }
+    }
+
     /// Asks Apple Maps for the names of places photos were taken away from home.
     var namesJournalPlaces: Bool {
         didSet { defaults.set(namesJournalPlaces, forKey: Key.namesJournalPlaces) }
@@ -56,5 +62,21 @@ final class AppSettings {
         gridColumns = GridZoom.nearestLevel(to: defaults.object(forKey: Key.gridColumns) as? Int ?? GridZoom.defaultColumns)
         movesWithPhone = defaults.object(forKey: Key.movesWithPhone) as? Bool ?? true
         namesJournalPlaces = defaults.object(forKey: Key.namesJournalPlaces) as? Bool ?? true
+        tiltStrength = defaults.string(forKey: Key.tiltStrength).flatMap(TiltStrength.init) ?? .medium
+    }
+}
+
+/// How far the hub moves with the phone; high is the strongest the effect goes.
+nonisolated enum TiltStrength: String, CaseIterable, Identifiable, Sendable {
+    case low, medium, high
+
+    var id: String { rawValue }
+
+    var scale: CGFloat {
+        switch self {
+        case .low: 0.45
+        case .medium: 0.7
+        case .high: 1
+        }
     }
 }

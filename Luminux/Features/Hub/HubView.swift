@@ -106,7 +106,7 @@ struct HubView: View {
             }
             .padding(.trailing, MetroMetrics.margin)
             // The tiles drift against the background, so they seem to float above it.
-            .tiltParallax(-8)
+            .tiltParallax(-8 * settings.tiltStrength.scale)
 
             if library.access == .limited {
                 VStack(alignment: .leading, spacing: 12) {
@@ -192,6 +192,7 @@ struct HubView: View {
 /// A recent photo behind the hub, picked once per launch.
 private struct HubBackground: View {
     @Environment(PhotoLibrary.self) private var library
+    @Environment(AppSettings.self) private var settings
     @State private var image: UIImage?
 
     var body: some View {
@@ -203,7 +204,7 @@ private struct HubBackground: View {
                         .scaledToFill()
                         // Oversized so the tilt never shows an edge.
                         .scaleEffect(1.1)
-                        .tiltParallax(22)
+                        .tiltParallax(22 * settings.tiltStrength.scale)
                         .transition(.opacity)
                 }
             }

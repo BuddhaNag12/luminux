@@ -140,6 +140,10 @@ struct MetroStack<Root: View, Destination: View>: View {
 
         // Only offset and opacity change, so the hub's photo background keeps covering the safe areas.
         return content()
+            // No page has a text field of its own; text is edited in sheets and alerts. Without this, every page
+            // in the stack re-lays out around the keyboard (grids, panorama, safe-area measurements), which hung
+            // the app while the note editor's keyboard came up.
+            .ignoresSafeArea(.keyboard)
             .featherScope(itemState)
             .offset(x: isTop ? backProgress * width : 0)
             .opacity(opacity)

@@ -258,10 +258,13 @@ struct JournalNoteEditor: View {
             Text(journal.title(for: entry))
                 .font(.metroCaption)
                 .foregroundStyle(metro.secondary)
+            // Short enough that the box and its buttons stay above the keyboard; longer notes scroll inside it.
             TextEditor(text: $text)
                 .font(.metroBody)
                 .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.interactively)
                 .padding(8)
+                .frame(height: 150)
                 .background(metro.chrome)
                 .focused($isFocused)
                 .accessibilityLabel("Note")
@@ -274,15 +277,22 @@ struct JournalNoteEditor: View {
                 Button("cancel") { dismiss() }
                     .buttonStyle(.metro)
             }
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, MetroMetrics.margin + 12)
         .padding(.top, 20)
         .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // A tap anywhere outside the text box puts the keyboard away.
+        .contentShape(Rectangle())
+        .onTapGesture { isFocused = false }
         .foregroundStyle(metro.foreground)
         .background(metro.background)
-        .presentationDetents([.medium, .large])
-        .onAppear {
-            text = journal.note(for: entry) ?? ""
+        .presentationDetents([.large])
+        .onAppear { text = journal.note(for: entry) ?? "" }
+        .task {
+            // Focus once the sheet has settled, so the keyboard doesn't come up mid-presentation.
+            try? await Task.sleep(for: .milliseconds(450))
             isFocused = true
         }
     }
