@@ -16,6 +16,7 @@ struct CollectionView: View {
     @State private var addToAlbum: AddToAlbumRequest?
     @State private var isNamingAlbum = false
     @State private var newAlbumName = ""
+    @State private var pinRequest: PinRequest?
 
     private static let albumsPage = 1
 
@@ -67,6 +68,7 @@ struct CollectionView: View {
             if newPage == Self.albumsPage { selection.end() }
         }
         .assetActionSheets(share: $share, addToAlbum: $addToAlbum)
+        .hubPinning($pinRequest)
         .alert("New album", isPresented: $isNamingAlbum) {
             TextField("Album name", text: $newAlbumName)
             Button("Cancel", role: .cancel) {}
@@ -96,7 +98,12 @@ struct CollectionView: View {
 
     private var menu: [AppBarMenuItem] {
         if selection.isActive {
-            return [AppBarMenuItem(title: "cancel selection") { selection.end() }]
+            return [
+                AppBarMenuItem(title: "pin to collection", isEnabled: !selection.selectedIDs.isEmpty) {
+                    pinRequest = PinRequest(target: .photos(Array(selection.selectedIDs))) { selection.end() }
+                },
+                AppBarMenuItem(title: "cancel selection") { selection.end() },
+            ]
         }
         return [AppBarMenuItem(title: "settings") { navigator.push(.settings) }]
     }

@@ -8,6 +8,7 @@ Luminux is inspired by the Windows Phone 8.1 Photos hub. It isn't affiliated wit
 
 **Browsing**
 - **Hub:** a horizontally scrolling panorama over one of your photos. The background and title move slower than the content (parallax). Live tiles cycle through your camera roll and favorites, and there are panels for what's new and favorites.
+- **Pinned tiles:** pin albums, or a handful of photos picked in select mode, to the hub's collection panel as live tiles. Hold a tile to move, resize (small, medium, wide) or unpin it. Two pins are free; Pro pins as many as you like.
 - **Collection:** swipeable pivots for *all*, *albums*, *favorites* and *videos*. *All* is grouped by month; tap a month header to open a month grid and jump to any month.
 - **Albums:** your own albums plus the automatic ones (selfies, Live Photos, portrait, panoramas, screenshots, bursts). Create, rename and delete albums, and add or remove photos.
 

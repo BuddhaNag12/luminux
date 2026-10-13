@@ -6,6 +6,7 @@ struct AlbumView: View {
 
     @Environment(PhotoLibrary.self) private var library
     @Environment(Navigator.self) private var navigator
+    @Environment(HubTiles.self) private var hubTiles
     @Environment(\.metro) private var metro
     @State private var selection = SelectionModel()
     @State private var isAppBarExpanded = false
@@ -17,6 +18,7 @@ struct AlbumView: View {
     /// Keeps the title on screen while a deleted album's page swings away.
     @State private var lastTitle = "album"
     @State private var bottomInset: CGFloat = 0
+    @State private var pinRequest: PinRequest?
 
     private var album: Album? { library.album(id: albumID) }
 
@@ -50,6 +52,7 @@ struct AlbumView: View {
         }
         .metroAppBar(buttons, menu: menu, isExpanded: $isAppBarExpanded)
         .assetActionSheets(share: $share, addToAlbum: $addToAlbum)
+        .hubPinning($pinRequest)
         .alert("Rename album", isPresented: $isRenaming) {
             TextField("Album name", text: $newName)
             Button("Cancel", role: .cancel) {}
@@ -92,7 +95,12 @@ struct AlbumView: View {
 
     private var menu: [AppBarMenuItem] {
         if selection.isActive {
-            var items = [AppBarMenuItem(title: "cancel selection") { selection.end() }]
+            var items = [
+                AppBarMenuItem(title: "pin to collection", isEnabled: !selection.selectedIDs.isEmpty) {
+                    pinRequest = PinRequest(target: .photos(Array(selection.selectedIDs))) { selection.end() }
+                },
+                AppBarMenuItem(title: "cancel selection") { selection.end() },
+            ]
             if album?.isUserAlbum == true {
                 items.insert(AppBarMenuItem(title: "remove from album", isEnabled: !selection.selectedIDs.isEmpty) {
                     let assets = selection.selectedAssets
@@ -104,13 +112,20 @@ struct AlbumView: View {
             }
             return items
         }
-        guard album?.isUserAlbum == true else { return [] }
-        return [
-            AppBarMenuItem(title: "rename") {
-                newName = album?.title ?? ""
-                isRenaming = true
-            },
-            AppBarMenuItem(title: "delete album") { confirmsDelete = true },
+        var items = [
+            hubTiles.isPinned(.album(albumID))
+                ? AppBarMenuItem(title: "unpin from collection") { hubTiles.unpin(.album(albumID)) }
+                : AppBarMenuItem(title: "pin to collection") { pinRequest = PinRequest(target: .album(albumID)) },
         ]
+        if album?.isUserAlbum == true {
+            items += [
+                AppBarMenuItem(title: "rename") {
+                    newName = album?.title ?? ""
+                    isRenaming = true
+                },
+                AppBarMenuItem(title: "delete album") { confirmsDelete = true },
+            ]
+        }
+        return items
     }
 }

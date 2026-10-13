@@ -7,6 +7,7 @@ struct LuminuxApp: App {
     @State private var navigator = Navigator()
     @State private var store = ProStore()
     @State private var journal = Journal()
+    @State private var hubTiles = HubTiles()
     @State private var news = NewsFeed()
     @State private var adConsent: AdConsent
     @State private var newsAds: NewsAds
@@ -27,6 +28,7 @@ struct LuminuxApp: App {
                 .environment(navigator)
                 .environment(store)
                 .environment(journal)
+                .environment(hubTiles)
                 .environment(news)
                 .environment(adConsent)
                 .environment(newsAds)
@@ -68,6 +70,7 @@ private struct AppShell: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ProStore.self) private var store
     @Environment(Journal.self) private var journal
+    @Environment(HubTiles.self) private var hubTiles
     @Namespace private var zoom
 
     var body: some View {
@@ -91,6 +94,8 @@ private struct AppShell: View {
                 JournalView()
             case .journalEntry(let id):
                 JournalEntryView(entryID: id)
+            case .photoSet(let id):
+                PhotoSetView(setID: id)
             }
         }
         .environment(\.zoomNamespace, zoom)
@@ -114,6 +119,11 @@ private struct AppShell: View {
             guard !Task.isCancelled else { return }
             await journal.rebuild()
             if settings.namesJournalPlaces { await journal.lookUpPlaces() }
+        }
+        .task(id: library.changeToken) {
+            // Deleted albums leave the hub too.
+            guard library.isLoaded else { return }
+            hubTiles.prune(albumIDs: Set(library.albums.map(\.id)))
         }
         .onChange(of: store.unlocksCustomAccent) { _, unlocked in
             // A refunded purchase takes its custom colour with it.

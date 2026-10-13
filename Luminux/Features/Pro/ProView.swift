@@ -21,6 +21,7 @@ struct ProPitch: View {
         Perk(glyph: "play.slash", title: "no ads", detail: "Use every feature without watching an ad."),
         Perk(glyph: "paintpalette", title: "any accent colour", detail: "Pick your own accent, beyond the classic six."),
         Perk(glyph: "rectangle.split.2x1", title: "wide live tiles", detail: "Medium and large photo tiles for the home screen."),
+        Perk(glyph: "pin", title: "unlimited pins", detail: "Pin as many albums and photo sets to the hub as you like."),
         Perk(glyph: "play.rectangle", title: "slideshow", detail: "A slow pan and zoom through any collection."),
         Perk(glyph: "crop.rotate", title: "editing", detail: "Rotate and crop, saved back to your library."),
     ]

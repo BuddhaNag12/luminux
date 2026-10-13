@@ -2,8 +2,8 @@ import StoreKit
 import SwiftUI
 import WidgetKit
 
-/// The one-time "Luminux Pro" purchase: custom accent colours, the medium and large live tiles, the slideshow and
-/// editing.
+/// The one-time "Luminux Pro" purchase: custom accent colours, the medium and large live tiles, unlimited hub pins,
+/// the slideshow and editing.
 @Observable
 final class ProStore {
     static let productID = "com.buddhanag.luminux.pro"

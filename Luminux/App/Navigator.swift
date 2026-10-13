@@ -8,6 +8,7 @@ enum Route: Hashable {
     case about
     case journal
     case journalEntry(String)
+    case photoSet(String)
 }
 
 struct ViewerRequest: Identifiable, Hashable {

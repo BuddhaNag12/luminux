@@ -30,6 +30,8 @@ struct HubView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var isAppBarExpanded = false
     @State private var tilt = PhoneTilt()
+    @State private var isEditingTiles = false
+    @State private var selectedTile: HubTileKind?
 
     /// Motion runs only while the hub is on screen.
     private var tracksTilt: Bool {
@@ -38,12 +40,12 @@ struct HubView: View {
 
     private var showsNews: Bool { !store.isUnlocked && news.isEnabled }
 
-    private let tileColumns = [GridItem(.flexible(), spacing: MetroMetrics.gutter), GridItem(.flexible(), spacing: MetroMetrics.gutter)]
     private let photoColumns = Array(repeating: GridItem(.flexible(), spacing: MetroMetrics.gutter), count: 3)
 
     var body: some View {
         Panorama("photos", leadingTitle: showsNews ? "news" : nil, startPanel: showsNews ? 1 : 0, onPanelChange: { panel in
             if showsNews && panel == 0 { Task { await prepareNews() } }
+            endEditing()
         }) {
             if showsNews {
                 PanoramaSection("top stories") { NewsPanel() }
@@ -67,7 +69,11 @@ struct HubView: View {
                 HubBackground()
             }
         }
-        .metroAppBar([], menu: menu, isExpanded: $isAppBarExpanded)
+        .metroAppBar(
+            isEditingTiles ? [AppBarButton(title: "done", systemImage: "checkmark") { endEditing() }] : [],
+            menu: isEditingTiles ? [] : menu,
+            isExpanded: $isAppBarExpanded
+        )
         .environment(tilt)
         .onChange(of: tracksTilt, initial: true) { _, tracks in
             tracks ? tilt.start() : tilt.stop()
@@ -86,7 +92,12 @@ struct HubView: View {
     }
 
     private var menu: [AppBarMenuItem] {
-        var items = [AppBarMenuItem(title: "settings") { navigator.push(.settings) }]
+        var items = [
+            AppBarMenuItem(title: "customize tiles") {
+                withAnimation(MetroMotion.standard) { isEditingTiles = true }
+            },
+            AppBarMenuItem(title: "settings") { navigator.push(.settings) },
+        ]
         if library.access == .limited {
             items.append(AppBarMenuItem(title: "choose more photos") { library.presentLimitedPicker() })
         }
@@ -95,38 +106,10 @@ struct HubView: View {
 
     private var collection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            LazyVGrid(columns: tileColumns, alignment: .leading, spacing: MetroMetrics.gutter) {
-                MetroTile(title: "camera roll", action: { navigator.push(.collection(page: 0)) }) {
-                    photoLiveTile(library.allAssets.items(limit: 8), style: .flip, fallback: "photo.on.rectangle")
-                }
-                .aspectRatio(1, contentMode: .fit)
-                .metroFeather(row: 2, column: 0)
-
-                MetroTile(title: "albums", action: { navigator.push(.collection(page: 1)) }) {
-                    metro.accentColor.overlay {
-                        Image(systemName: "rectangle.stack")
-                            .font(.system(size: 34, weight: .ultraLight))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .aspectRatio(1, contentMode: .fit)
-                .metroFeather(row: 2, column: 1)
-
-                MetroTile(title: "date", action: { navigator.push(.collection(page: 0, showsJumpList: true)) }) {
-                    metro.accentColor.overlay(alignment: .topLeading) { dateFace }
-                }
-                .aspectRatio(1, contentMode: .fit)
-                .metroFeather(row: 3, column: 0)
-
-                MetroTile(title: "favorites", action: { navigator.push(.collection(page: 2)) }) {
-                    photoLiveTile(library.favorites.items(limit: 8), style: .slide, fallback: "heart")
-                }
-                .aspectRatio(1, contentMode: .fit)
-                .metroFeather(row: 3, column: 1)
-            }
-            .padding(.trailing, MetroMetrics.margin)
-            // The tiles drift against the background, so they seem to float above it.
-            .tiltParallax(-8 * settings.tiltStrength.scale)
+            HubTileGrid(isEditing: $isEditingTiles, selected: $selectedTile)
+                .padding(.trailing, MetroMetrics.margin)
+                // The tiles drift against the background, so they seem to float above it.
+                .tiltParallax(-8 * settings.tiltStrength.scale)
 
             if library.access == .limited {
                 VStack(alignment: .leading, spacing: 12) {
@@ -137,6 +120,23 @@ struct HubView: View {
                         .buttonStyle(.metro)
                 }
             }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            // A tap between or below the tiles leaves edit mode.
+            if isEditingTiles {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { endEditing() }
+            }
+        }
+    }
+
+    private func endEditing() {
+        guard isEditingTiles else { return }
+        withAnimation(MetroMotion.standard) {
+            isEditingTiles = false
+            selectedTile = nil
         }
     }
 
@@ -155,31 +155,6 @@ struct HubView: View {
             }
         }
         .padding(.trailing, MetroMetrics.margin + 12)
-    }
-
-    private var dateFace: some View {
-        let now = Date()
-        return VStack(alignment: .leading, spacing: 0) {
-            Text(now.formatted(.dateTime.month(.abbreviated)).lowercased())
-                .font(.metro(22, .semilight))
-            Text(now.formatted(.dateTime.day()))
-                .font(.metro(56, .light))
-        }
-        .foregroundStyle(.white)
-        .padding(10)
-    }
-
-    @ViewBuilder
-    private func photoLiveTile(_ items: [AssetItem], style: LiveTile<AssetItem, AssetThumbnail>.Style, fallback: String) -> some View {
-        if items.isEmpty {
-            metro.accentColor.overlay {
-                Image(systemName: fallback).font(.system(size: 34, weight: .ultraLight)).foregroundStyle(.white)
-            }
-        } else {
-            LiveTile(items: items, style: style) { item in
-                AssetThumbnail(asset: item.asset, pixelSide: 200 * displayScale)
-            }
-        }
     }
 
     @ViewBuilder

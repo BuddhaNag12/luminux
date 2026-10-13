@@ -31,6 +31,8 @@ struct Tilt: Equatable {
 /// A square-cornered tile that tilts toward the finger while pressed.
 struct MetroTile<Content: View>: View {
     var title: String?
+    /// Small tiles have no room for a label; the title still names the tile for VoiceOver.
+    var showsTitle = true
     let action: () -> Void
     @ViewBuilder var content: Content
 
@@ -43,7 +45,7 @@ struct MetroTile<Content: View>: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
                 .overlay(alignment: .bottomLeading) {
-                    if let title {
+                    if let title, showsTitle {
                         Text(title)
                             .font(.metroCaption)
                             .foregroundStyle(.white)
