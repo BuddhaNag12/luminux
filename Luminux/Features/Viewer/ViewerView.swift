@@ -29,6 +29,11 @@ struct ViewerView: View {
     @State private var isPanelMounted = false
     @State private var screenHeight: CGFloat = 0
     @State private var playback = VideoPlayback()
+    /// True after an ad unlocked subject lifting for this visit.
+    @State private var liftUnlocked = false
+    @State private var isLiftingSubject = false
+    /// Favourite state shown before PhotoKit reports the change, so the heart answers the tap at once.
+    @State private var pendingFavorites: [String: Bool] = [:]
 
     private var panelHeight: CGFloat { (screenHeight * 0.55).rounded() }
     private var chromeVisible: Bool { showsChrome && dismissDrag == 0 && !isPanelMounted }
@@ -50,7 +55,14 @@ struct ViewerView: View {
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 0) {
                     ForEach(0..<assets.count, id: \.self) { position in
-                        ViewerPage(asset: assets.object(at: position), isCurrent: position == index, playback: playback) {
+                        ViewerPage(
+                            asset: assets.object(at: position),
+                            isCurrent: position == index,
+                            playback: playback,
+                            allowsLift: store.isUnlocked || liftUnlocked,
+                            onLockedLift: { withPro("lift a subject once") { liftUnlocked = true } },
+                            onSubjectHighlight: { isLiftingSubject = $0 }
+                        ) {
                             if showsDetails {
                                 setDetails(open: false)
                             } else {
@@ -65,22 +77,29 @@ struct ViewerView: View {
                 .scrollTargetLayout()
             }
             .scrollTargetBehavior(.paging)
+            // A lifted subject can be dragged out; the pager, swipe down and details hold still meanwhile.
+            .scrollDisabled(isLiftingSubject)
             .scrollPosition(id: $index)
             .scrollIndicators(.hidden)
             .ignoresSafeArea()
             .scaleEffect(1 - min(dismissDrag / 1600, 0.25))
             // Keeps the photo centred in the space left above the details panel.
             .offset(y: dismissDrag - min(detailsLift, panelHeight) / 2)
-            .gesture(VerticalDragRecognizer(isEnabled: !isZoomed, onChange: verticalDragChanged, onEnd: verticalDragEnded))
-
-            if chromeVisible, let current {
-                Text(current.creationDate.map { $0.formatted(.dateTime.weekday(.wide).month(.wide).day().year().hour().minute()).lowercased() } ?? "")
-                    .font(.metroCaption)
-                    .foregroundStyle(.white.opacity(0.75))
-                    .padding(.horizontal, MetroMetrics.margin + 12)
-                    .padding(.top, 8)
-                    .transition(.opacity)
+            .gesture(VerticalDragRecognizer(isEnabled: !isZoomed && !isLiftingSubject, onChange: verticalDragChanged, onEnd: verticalDragEnded))
+        }
+        .overlay(alignment: .topLeading) {
+            ZStack(alignment: .topLeading) {
+                if chromeVisible, let current {
+                    Text(current.creationDate.map { $0.formatted(.dateTime.weekday(.wide).month(.wide).day().year().hour().minute()).lowercased() } ?? "")
+                        .font(.metroCaption)
+                        .foregroundStyle(.white.opacity(0.75))
+                        .padding(.horizontal, MetroMetrics.margin + 12)
+                        .padding(.top, 8)
+                        .transition(.opacity)
+                }
             }
+            // Drags and the details panel hide the chrome mid-gesture; it fades instead of popping.
+            .animation(MetroMotion.fade, value: chromeVisible)
         }
         .overlay(alignment: .bottom) {
             if isPanelMounted, let current {
@@ -95,23 +114,30 @@ struct ViewerView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if chromeVisible, let current {
-                VStack(spacing: 0) {
-                    if current.mediaType == .video {
-                        VideoControlsRow(playback: playback)
+            ZStack(alignment: .bottom) {
+                if chromeVisible, let current {
+                    VStack(spacing: 0) {
+                        if current.mediaType == .video {
+                            VideoControlsRow(playback: playback)
+                        }
+                        MetroAppBar(buttons: buttons(for: current), menuItems: menu(for: current), isExpanded: $isAppBarExpanded)
                     }
-                    MetroAppBar(buttons: buttons(for: current), menuItems: menu(for: current), isExpanded: $isAppBarExpanded)
+                    .environment(\.metro, MetroPalette(theme: .dark, accent: metro.accent))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .environment(\.metro, MetroPalette(theme: .dark, accent: metro.accent))
-                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+            .animation(MetroMotion.fade, value: chromeVisible)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { screenHeight = $0 }
         .statusBarHidden(!showsChrome)
         // The zoom transition's own swipe-down would close the viewer instead of the panel.
-        .interactiveDismissDisabled(isPanelMounted)
+        .interactiveDismissDisabled(isPanelMounted || isLiftingSubject)
+        .onChange(of: chromeVisible) { _, visible in
+            if !visible { isAppBarExpanded = false }
+        }
         .onChange(of: index) { _, newIndex in
             isZoomed = false
+            isLiftingSubject = false
             if let newIndex, assets.count > newIndex {
                 navigator.viewerCurrentID = assets.object(at: newIndex).localIdentifier
             }
@@ -130,7 +156,14 @@ struct ViewerView: View {
         }
         .onChange(of: library.changeToken) {
             // After a delete, stay at the same position or close when nothing is left.
-            let count = library.assets(in: request.source).count
+            let assets = library.assets(in: request.source)
+            let count = assets.count
+            // PhotoKit has caught up with the favourite taps.
+            pendingFavorites = pendingFavorites.filter { id, value in
+                guard let index, index < count else { return false }
+                let asset = assets.object(at: index)
+                return asset.localIdentifier == id && asset.isFavorite != value
+            }
             if count == 0 {
                 dismiss()
             } else if let index, index >= count {
@@ -187,7 +220,7 @@ struct ViewerView: View {
 
     private func setDetails(open: Bool) {
         showsDetails = open
-        isAppBarExpanded = false
+        withAnimation(MetroMotion.standard) { isAppBarExpanded = false }
         if open { isPanelMounted = true }
         withAnimation(MetroMotion.standard, completionCriteria: .logicallyComplete) {
             detailsLift = open ? panelHeight : 0
@@ -202,10 +235,23 @@ struct ViewerView: View {
         return panelHeight + (lift - panelHeight) * 0.2
     }
 
+    private func toggleFavorite(_ asset: PHAsset, to value: Bool) {
+        let id = asset.localIdentifier
+        withAnimation(MetroMotion.snappy) { pendingFavorites[id] = value }
+        Task {
+            do {
+                try await library.setFavorite([asset], value)
+            } catch {
+                withAnimation(MetroMotion.snappy) { pendingFavorites[id] = nil }
+            }
+        }
+    }
+
     private func buttons(for asset: PHAsset) -> [AppBarButton] {
+        let isFavorite = pendingFavorites[asset.localIdentifier] ?? asset.isFavorite
         var buttons: [AppBarButton] = []
         if asset.mediaType == .video {
-            buttons.append(AppBarButton(title: playback.isPlaying ? "pause" : "play", systemImage: playback.isPlaying ? "pause.fill" : "play.fill", isEnabled: playback.player != nil) {
+            buttons.append(AppBarButton(id: "playPause", title: playback.isPlaying ? "pause" : "play", systemImage: playback.isPlaying ? "pause.fill" : "play.fill", isEnabled: playback.player != nil) {
                 playback.togglePlay()
             })
         }
@@ -216,8 +262,8 @@ struct ViewerView: View {
                     if !urls.isEmpty { share = ShareItems(urls: urls) }
                 }
             },
-            AppBarButton(title: asset.isFavorite ? "unfavorite" : "favorite", systemImage: asset.isFavorite ? "heart.fill" : "heart") {
-                Task { try? await library.setFavorite([asset], !asset.isFavorite) }
+            AppBarButton(id: "favorite", title: isFavorite ? "unfavorite" : "favorite", systemImage: isFavorite ? "heart.fill" : "heart") {
+                toggleFavorite(asset, to: !isFavorite)
             },
         ]
         if asset.supportsLuminuxEdits {
@@ -244,7 +290,7 @@ struct ViewerView: View {
         var items: [AppBarMenuItem] = []
         if asset.supportsLuminuxEdits {
             items.append(AppBarMenuItem(title: "rotate") {
-                withPro("rotate this photo once") { Task { try? await library.applyEdit(EditRecipe(quarterTurns: 1), to: asset) } }
+                withPro("rotate this photo once") { Task { try? await library.rotateLeft(asset) } }
             })
         }
         items.append(AppBarMenuItem(title: "add to album") { addToAlbum = AddToAlbumRequest(assets: [asset]) })
@@ -263,6 +309,9 @@ private struct ViewerPage: View {
     let asset: PHAsset
     let isCurrent: Bool
     let playback: VideoPlayback
+    let allowsLift: Bool
+    let onLockedLift: () -> Void
+    let onSubjectHighlight: (Bool) -> Void
     let onTap: () -> Void
     let onZoomChange: (Bool) -> Void
 
@@ -276,7 +325,8 @@ private struct ViewerPage: View {
             if asset.mediaSubtypes.contains(.photoLive) && settings.playsLivingImages {
                 LivePhotoPage(asset: asset, isCurrent: isCurrent, onTap: onTap)
             } else {
-                PhotoPage(asset: asset, isCurrent: isCurrent, onTap: onTap, onZoomChange: onZoomChange)
+                PhotoPage(asset: asset, isCurrent: isCurrent, allowsLift: allowsLift, onTap: onTap, onZoomChange: onZoomChange,
+                          onLockedLift: onLockedLift, onSubjectHighlight: onSubjectHighlight)
             }
         }
     }
@@ -285,14 +335,19 @@ private struct ViewerPage: View {
 private struct PhotoPage: View {
     let asset: PHAsset
     let isCurrent: Bool
+    let allowsLift: Bool
     let onTap: () -> Void
     let onZoomChange: (Bool) -> Void
+    let onLockedLift: () -> Void
+    let onSubjectHighlight: (Bool) -> Void
 
     @State private var image: UIImage?
+    @State private var lifter = SubjectLifter()
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
-        ZoomableImageView(image: image, isCurrent: isCurrent, onSingleTap: onTap, onZoomChange: onZoomChange)
+        ZoomableImageView(image: image, isCurrent: isCurrent, allowsLift: allowsLift, lifter: lifter, onSingleTap: onTap,
+                          onZoomChange: onZoomChange, onLockedLift: onLockedLift, onSubjectHighlight: onSubjectHighlight)
             .task(id: asset.renderKey) {
                 // Screen-sized first; zooming in shows the same pixels, which is enough for v1.
                 let side = 1400 * displayScale
@@ -303,6 +358,14 @@ private struct PhotoPage: View {
             .accessibilityElement()
             .accessibilityLabel(asset.spokenDescription)
             .accessibilityAddTraits(.isImage)
+            // VoiceOver can't touch and hold to lift, so it gets the copy directly.
+            .accessibilityAction(named: "copy subject") {
+                guard allowsLift else { return onLockedLift() }
+                Task {
+                    let copied = await lifter.copySubject()
+                    AccessibilityNotification.Announcement(copied ? "Subject copied" : "No subject found").post()
+                }
+            }
     }
 }
 

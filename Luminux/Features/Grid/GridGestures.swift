@@ -26,6 +26,34 @@ nonisolated enum GridZoom {
         }
         return levels[min(max(index + steps, 0), levels.count - 1)]
     }
+
+    /// Like `columns(after:magnification:)`, but a quick flick counts as a step even when the fingers barely moved.
+    static func columns(after current: Int, magnification: CGFloat, velocity: CGFloat) -> Int {
+        // Where the pinch would have ended about a tenth of a second later.
+        columns(after: current, magnification: max(magnification + velocity * 0.1, 0.1))
+    }
+
+    /// How far a pinch can scale the grid before it starts to resist: as far as the biggest and smallest levels.
+    static func scaleLimits(for columns: Int) -> ClosedRange<CGFloat> {
+        let current = CGFloat(nearestLevel(to: columns))
+        return current / CGFloat(levels.last!)...current / CGFloat(levels.first!)
+    }
+
+    /// Follows the fingers inside the limits and slows down past them, so the grid resists instead of stopping dead.
+    static func rubberBand(_ scale: CGFloat, limits: ClosedRange<CGFloat>) -> CGFloat {
+        let damping: CGFloat = 0.2
+        if scale > limits.upperBound {
+            return limits.upperBound * (1 + log(scale / limits.upperBound) * damping)
+        } else if scale < limits.lowerBound {
+            return limits.lowerBound / (1 + log(limits.lowerBound / scale) * damping)
+        }
+        return scale
+    }
+
+    /// The side of a tile at `columns` across `width`, with the grid's gutters.
+    static func tileSide(columns: Int, width: CGFloat, gutter: CGFloat) -> CGFloat {
+        (width - gutter * CGFloat(columns - 1)) / CGFloat(columns)
+    }
 }
 
 /// Where each laid-out tile sits in the grid, for finding the photo under a finger. A plain class, so writing to it
@@ -34,6 +62,7 @@ final class TileFrames {
     private var frames: [Int: CGRect] = [:]
 
     func set(_ frame: CGRect, for index: Int) { frames[index] = frame }
+    func frame(of index: Int) -> CGRect? { frames[index] }
     func remove(_ index: Int) { frames[index] = nil }
     func removeAll() { frames.removeAll() }
 
@@ -50,6 +79,46 @@ final class GridScrollMetrics {
     /// The part of the scroll view not covered by bars, in its own coordinates.
     var visibleTop: CGFloat = 0
     var visibleBottom: CGFloat = 0
+    var viewportSize: CGSize = .zero
+}
+
+/// A two-finger pinch that reports its scale, how fast it's changing, and the point between the fingers, so the grid
+/// can zoom around that point and follow it when both fingers move.
+struct GridPinchRecognizer: UIGestureRecognizerRepresentable {
+    enum Phase { case began, changed, ended }
+
+    var onChange: (_ phase: Phase, _ scale: CGFloat, _ velocity: CGFloat, _ centroid: CGPoint) -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    func makeUIGestureRecognizer(context: Context) -> UIPinchGestureRecognizer {
+        let recognizer = UIPinchGestureRecognizer()
+        recognizer.delegate = context.coordinator
+        return recognizer
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UIPinchGestureRecognizer, context: Context) {
+        // With one finger lifted the location jumps to the other finger; keep the last point between both.
+        if recognizer.numberOfTouches >= 2 {
+            context.coordinator.centroid = context.converter.localLocation
+        }
+        let centroid = context.coordinator.centroid
+        switch recognizer.state {
+        case .began: onChange(.began, recognizer.scale, recognizer.velocity, centroid)
+        case .changed: onChange(.changed, recognizer.scale, recognizer.velocity, centroid)
+        case .ended, .cancelled, .failed: onChange(.ended, recognizer.scale, recognizer.velocity, centroid)
+        default: break
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var centroid: CGPoint = .zero
+
+        // Starts alongside the scroll view's pan; the grid turns scrolling off once the pinch begins.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
+        }
+    }
 }
 
 /// A one-finger drag that only starts when it moves sideways, so vertical drags still scroll the grid. The pivot

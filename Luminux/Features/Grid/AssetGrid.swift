@@ -75,10 +75,7 @@ struct AssetGrid: View {
     @State private var scrollPosition = ScrollPosition(idType: Int.self)
     @State private var tileFrames = TileFrames()
     @State private var metrics = GridScrollMetrics()
-    @State private var pinchScale: CGFloat = 1
-    @State private var pinchAnchor = UnitPoint.center
-    /// Set while a pinch runs and just after, so lifting the fingers doesn't open the photo under them.
-    @State private var isPinching = false
+    @State private var pinch = GridPinch()
     @State private var swipe: SwipeState?
 
     private var columns: Int { settings.gridColumns }
@@ -128,12 +125,17 @@ struct AssetGrid: View {
                 metrics.maxOffsetY = max(geometry.contentSize.height + geometry.contentInsets.bottom - geometry.containerSize.height, metrics.minOffsetY)
                 metrics.visibleTop = geometry.contentInsets.top
                 metrics.visibleBottom = geometry.containerSize.height - geometry.contentInsets.bottom
+                metrics.viewportSize = geometry.containerSize
                 let row = Int(max(geometry.contentOffset.y + geometry.contentInsets.top, 0) / (tileSide + MetroMetrics.gutter))
                 if featherOrigin.row != row { featherOrigin.row = row }
             }
-            .scaleEffect(pinchScale, anchor: pinchAnchor)
-            .simultaneousGesture(pinch(assets))
-            .gesture(SwipeSelectRecognizer(isEnabled: selection.isActive && pinchScale == 1) { phase, start, location in
+            // The pinch moves the grid itself; the scroll view would otherwise pan it too.
+            .scrollDisabled(pinch.isActive)
+            .modifier(GridPinchTransform(pinch: pinch))
+            .gesture(GridPinchRecognizer { phase, scale, velocity, centroid in
+                pinchChanged(phase, scale: scale, velocity: velocity, centroid: centroid)
+            })
+            .gesture(SwipeSelectRecognizer(isEnabled: selection.isActive && !pinch.isActive) { phase, start, location in
                 swipeChanged(phase, start: start, location: location, assets: assets)
             })
             .sensoryFeedback(.selection, trigger: longPressedID) { _, new in new != nil }
@@ -155,32 +157,85 @@ struct AssetGrid: View {
 
     // MARK: Pinch to zoom
 
-    private func pinch(_ assets: PHFetchResult<PHAsset>) -> some Gesture {
-        MagnifyGesture()
-            .onChanged { value in
-                isPinching = true
-                pinchAnchor = value.startAnchor
-                // Rubber-bands past the next level so the grid can't be stretched out of shape.
-                pinchScale = min(max(value.magnification, 0.6), 1.6)
+    private func pinchChanged(_ phase: GridPinchRecognizer.Phase, scale: CGFloat, velocity: CGFloat, centroid: CGPoint) {
+        let viewport = metrics.viewportSize
+        guard viewport.width > 0, viewport.height > 0 else { return }
+        switch phase {
+        case .began:
+            pinch.isActive = true
+            pinch.startCentroid = centroid
+            pinch.anchor = UnitPoint(x: centroid.x / viewport.width, y: centroid.y / viewport.height)
+            pinch.offset = .zero
+            pinch.limits = GridZoom.scaleLimits(for: columns)
+            // The photo between the fingers, and where in it they are, so it can stay under them across the change.
+            let contentPoint = CGPoint(x: centroid.x, y: centroid.y + metrics.offsetY)
+            pinch.anchorIndex = tileFrames.index(at: contentPoint)
+            if let index = pinch.anchorIndex, let frame = tileFrames.frame(of: index), frame.width > 0 {
+                pinch.anchorUnit = CGPoint(x: (contentPoint.x - frame.minX) / frame.width, y: (contentPoint.y - frame.minY) / frame.height)
+            } else {
+                pinch.anchorIndex = scrollPosition.viewID(type: Int.self)
+                pinch.anchorUnit = CGPoint(x: 0.5, y: 0.5)
             }
-            .onEnded { value in
-                let next = GridZoom.columns(after: columns, magnification: value.magnification)
-                // Keep the photo under the fingers in place across the change.
-                let contentPoint = CGPoint(x: value.startLocation.x, y: value.startLocation.y + metrics.offsetY)
-                let anchorIndex = tileFrames.index(at: contentPoint) ?? scrollPosition.viewID(type: Int.self)
-                Task {
-                    try? await Task.sleep(for: .milliseconds(300))
-                    isPinching = false
-                }
-                withAnimation(MetroMotion.standard) {
-                    pinchScale = 1
-                    guard next != columns else { return }
-                    settings.gridColumns = next
-                    if let anchorIndex {
-                        scrollPosition.scrollTo(id: anchorIndex, anchor: UnitPoint(x: 0.5, y: value.startAnchor.y))
-                    }
-                }
+        case .changed:
+            pinch.scale = GridZoom.rubberBand(scale, limits: pinch.limits)
+            pinch.offset = CGSize(width: centroid.x - pinch.startCentroid.x, height: centroid.y - pinch.startCentroid.y)
+        case .ended:
+            settlePinch(scale: scale, velocity: velocity, centroid: centroid, viewport: viewport)
+        }
+    }
+
+    /// Switches to the level the pinch chose without anything visibly moving, then lets the grid settle into it.
+    private func settlePinch(scale: CGFloat, velocity: CGFloat, centroid: CGPoint, viewport: CGSize) {
+        let next = GridZoom.columns(after: columns, magnification: scale, velocity: velocity)
+        if next != columns, let anchorIndex = pinch.anchorIndex {
+            let oldSide = tileSide
+            let newSide = GridZoom.tileSide(columns: next, width: gridWidth, gutter: MetroMetrics.gutter)
+            let visualScale = pinch.scale * oldSide / newSide
+            // Where the photo under the fingers lands in the new layout, across and down.
+            let column = CGFloat(column(of: anchorIndex, columns: next))
+            let fingerX = column * (newSide + MetroMetrics.gutter) + pinch.anchorUnit.x * newSide
+            let tileTop = centroid.y - pinch.anchorUnit.y * newSide
+            let scrollAnchor = viewport.height > newSide ? min(max(tileTop / (viewport.height - newSide), 0), 1) : 0
+
+            var rebase = Transaction()
+            rebase.disablesAnimations = true
+            withTransaction(rebase) {
+                settings.gridColumns = next
+                scrollPosition.scrollTo(id: anchorIndex, anchor: UnitPoint(x: 0.5, y: scrollAnchor))
+                pinch.anchor = UnitPoint(x: centroid.x / viewport.width, y: centroid.y / viewport.height)
+                pinch.scale = visualScale
+                pinch.offset = CGSize(width: -(fingerX - centroid.x) * visualScale, height: 0)
             }
+            ImageLoader.shared.cache(nearby(anchorIndex, columns: next), side: AssetThumbnail.requestSide(for: newSide * displayScale))
+            // After the re-based frame has drawn, so the settle animates from it rather than from the pinch.
+            DispatchQueue.main.async { settle() }
+        } else {
+            settle()
+        }
+    }
+
+    private func settle() {
+        withAnimation(MetroMotion.standard) {
+            pinch.scale = 1
+            pinch.offset = .zero
+        } completion: {
+            pinch.isActive = false
+        }
+    }
+
+    /// The column a photo sits in, counting from the start of its month when the grid has month headers.
+    private func column(of index: Int, columns: Int) -> Int {
+        let start = sections?.first { $0.range.contains(index) }?.range.lowerBound ?? 0
+        return (index - start) % columns
+    }
+
+    /// The photos a few screens around `index`, to have their thumbnails ready for a new level.
+    private func nearby(_ index: Int, columns: Int) -> [PHAsset] {
+        let assets = library.assets(in: source)
+        let span = columns * 30
+        let range = max(index - span, 0)..<min(index + span, assets.count)
+        guard !range.isEmpty else { return [] }
+        return assets.objects(at: IndexSet(integersIn: range))
     }
 
     // MARK: Swipe to select
@@ -263,7 +318,7 @@ struct AssetGrid: View {
             let asset = assets.object(at: index)
             let id = asset.localIdentifier
             Button {
-                if isPinching {
+                if pinch.isActive {
                     return
                 } else if longPressedID == id {
                     longPressedID = nil
@@ -295,7 +350,7 @@ struct AssetGrid: View {
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.gridSpace)) } action: { tileFrames.set($0, for: index) }
             .onDisappear { tileFrames.remove(index) }
             .simultaneousGesture(LongPressGesture(minimumDuration: 0.4).onEnded { _ in
-                guard !selection.isActive else { return }
+                guard !selection.isActive, !pinch.isActive else { return }
                 longPressedID = id
                 selection.begin(with: id)
             })
@@ -367,7 +422,13 @@ struct AssetThumbnail: View {
     var pixelSide: CGFloat
 
     @State private var image: UIImage?
+    @State private var loadedSide: CGFloat = 0
     @Environment(\.metro) private var metro
+
+    /// Request sizes come in steps, so neighbouring zoom levels share one image instead of loading it twice.
+    static func requestSide(for pixelSide: CGFloat) -> CGFloat {
+        [128, 256, 384, 512, 768, 1024, 1536].first { $0 >= pixelSide } ?? pixelSide
+    }
 
     var body: some View {
         metro.chrome
@@ -399,9 +460,10 @@ struct AssetThumbnail: View {
                         .padding(5)
                 }
             }
-            // Reloads at the new size when the grid zooms; the old image stays up until the sharper one arrives.
-            .task(id: "\(asset.renderKey)-\(Int(pixelSide))") {
-                let side = max(pixelSide, 60)
+            // Reloads only when the grid zooms in past the loaded size; zooming out keeps the sharper image.
+            .task(id: "\(asset.renderKey)-\(Int(max(Self.requestSide(for: pixelSide), loadedSide)))") {
+                let side = max(Self.requestSide(for: pixelSide), loadedSide)
+                loadedSide = side
                 for await next in ImageLoader.shared.images(for: asset, targetSize: CGSize(width: side, height: side)) {
                     image = next
                 }
@@ -421,5 +483,32 @@ extension PHAsset {
         let kind = mediaType == .video ? "Video" : (mediaSubtypes.contains(.photoLive) ? "Live Photo" : "Photo")
         guard let creationDate else { return kind }
         return "\(kind), \(creationDate.formatted(date: .long, time: .shortened))"
+    }
+}
+
+/// The pinch's live transform. Observed only by `GridPinchTransform`, so a pinch frame redraws the transform and not
+/// the grid's tiles.
+@Observable
+final class GridPinch {
+    var scale: CGFloat = 1
+    var offset: CGSize = .zero
+    var anchor: UnitPoint = .center
+    /// From the first finger until the grid has settled; scrolling, taps and swipe-select wait for it.
+    var isActive = false
+
+    @ObservationIgnored var startCentroid: CGPoint = .zero
+    @ObservationIgnored var limits: ClosedRange<CGFloat> = 1...1
+    @ObservationIgnored var anchorIndex: Int?
+    /// Where in the anchor photo the fingers are, from its top-left corner (0...1 each way).
+    @ObservationIgnored var anchorUnit = CGPoint(x: 0.5, y: 0.5)
+}
+
+private struct GridPinchTransform: ViewModifier {
+    let pinch: GridPinch
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(pinch.scale, anchor: pinch.anchor)
+            .offset(pinch.offset)
     }
 }

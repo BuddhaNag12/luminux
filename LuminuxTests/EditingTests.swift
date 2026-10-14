@@ -76,3 +76,79 @@ struct EditRecipeTests {
         #expect(EditRecipe(quarterTurns: 4).isIdentity)
     }
 }
+
+struct AdjustmentTests {
+    private let gray = CIImage(color: CIColor(red: 0.5, green: 0.5, blue: 0.5)).cropped(to: CGRect(x: 0, y: 0, width: 8, height: 8))
+    private let warmish = CIImage(color: CIColor(red: 0.7, green: 0.4, blue: 0.3)).cropped(to: CGRect(x: 0, y: 0, width: 8, height: 8))
+
+    private func pixel(_ image: CIImage) -> [Int] {
+        var bytes = [UInt8](repeating: 0, count: 4)
+        PhotoEditing.context.render(image, toBitmap: &bytes, rowBytes: 4, bounds: CGRect(x: 4, y: 4, width: 1, height: 1),
+                                    format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+        return bytes.prefix(3).map(Int.init)
+    }
+
+    @Test func versionOneRecipesStillOpen() throws {
+        let json = #"{"quarterTurns":1,"crop":[[0,0],[1,1]]}"#.data(using: .utf8)!
+        let recipe = try JSONDecoder().decode(EditRecipe.self, from: json)
+        #expect(recipe.quarterTurns == 1)
+        #expect(recipe.adjustments.isNeutral)
+        #expect(recipe.look == nil)
+    }
+
+    @Test func recipesRoundTripWithTheirLook() throws {
+        for look in Look.allCases {
+            let recipe = EditRecipe(quarterTurns: 2, adjustments: look.adjustments, look: look)
+            let decoded = try JSONDecoder().decode(EditRecipe.self, from: JSONEncoder().encode(recipe))
+            #expect(decoded == recipe)
+        }
+    }
+
+    @Test func neutralAdjustmentsLeaveThePixelsAlone() {
+        #expect(pixel(Adjustments().apply(to: warmish)) == pixel(warmish))
+        #expect(EditRecipe().isIdentity)
+        #expect(!EditRecipe(adjustments: Adjustments([.exposure: 0.2])).isIdentity)
+    }
+
+    @Test func exposureBrightens() {
+        let brighter = pixel(Adjustments([.exposure: 0.5]).apply(to: gray))
+        #expect(brighter[0] > pixel(gray)[0] + 20)
+    }
+
+    @Test func warmthAddsRedOverBlue() {
+        let warm = pixel(Adjustments([.temperature: 0.5]).apply(to: gray))
+        #expect(warm[0] > warm[2] + 10)
+        let cool = pixel(Adjustments([.temperature: -0.5]).apply(to: gray))
+        #expect(cool[2] > cool[0] + 10)
+    }
+
+    @Test func noSaturationIsGray() {
+        let mono = pixel(Adjustments([.saturation: -1]).apply(to: warmish))
+        #expect(abs(mono[0] - mono[1]) <= 1 && abs(mono[1] - mono[2]) <= 1)
+    }
+
+    @Test func slidersClampAndClearAtZero() {
+        var adjustments = Adjustments()
+        adjustments[.vignette] = -0.5
+        #expect(adjustments[.vignette] == 0)
+        #expect(adjustments.isNeutral)
+        adjustments[.exposure] = 3
+        #expect(adjustments[.exposure] == 1)
+    }
+
+    @Test func adjustmentsKeepThePhotoSize() {
+        let all = Adjustments(Dictionary(uniqueKeysWithValues: Adjustment.allCases.map { ($0, 0.5) }))
+        #expect(all.apply(to: warmish).extent == warmish.extent)
+    }
+
+    @Test func rotatingKeepsTheSameCroppedArea() {
+        let image = CIImage(color: .red).cropped(to: CGRect(x: 0, y: 0, width: 400, height: 300))
+        let recipe = EditRecipe(crop: CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5))
+        let turned = recipe.rotatedLeft()
+        #expect(turned.quarterTurns == 1)
+        // The top-right quarter of the photo lands in the top-left after a counterclockwise turn.
+        #expect(turned.crop == CGRect(x: 0, y: 0, width: 0.5, height: 0.5))
+        #expect(turned.apply(to: image).extent.size == CGSize(width: 150, height: 200))
+    }
+}
+

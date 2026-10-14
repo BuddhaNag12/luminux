@@ -1,21 +1,29 @@
 import Photos
 import SwiftUI
 
-/// Rotate and crop, saved as a non-destructive PhotoKit edit (revertible here or in Photos).
+/// Crop, adjust and looks, saved as a PhotoKit edit that reopens with its sliders where they were left
+/// (and reverts here or in Photos).
 struct EditorView: View {
     let asset: PHAsset
 
     @Environment(PhotoLibrary.self) private var library
     @Environment(\.metro) private var metro
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.displayScale) private var displayScale
-    @State private var source: UIImage?
+    @State private var session: EditSession?
+    @State private var recipe = EditRecipe()
     @State private var preview: UIImage?
-    @State private var quarterTurns = 0
-    @State private var crop = CGRect(x: 0, y: 0, width: 1, height: 1)
+    /// Whether `preview` was rendered with the crop applied; the crop handles only fit an uncropped preview.
+    @State private var previewIsCropped = false
+    @State private var mode: EditMode = .adjust
+    @State private var selected: Adjustment = .exposure
     @State private var aspect: CropAspect = .free
+    @State private var showsOriginal = false
+    @State private var lookThumbnails: [Look?: UIImage] = [:]
+    @State private var isRendering = false
+    @State private var needsRender = false
     @State private var isSaving = false
     @State private var failed = false
+    @State private var couldNotOpen = false
     @State private var isAppBarExpanded = false
 
     var body: some View {
@@ -32,23 +40,39 @@ struct EditorView: View {
                         .resizable()
                         .frame(width: imageRect.width, height: imageRect.height)
                         .position(x: imageRect.midX, y: imageRect.midY)
-                    CropOverlay(crop: $crop, aspect: aspect, imageRect: imageRect, imageSize: preview.size)
+                    if mode == .crop && !previewIsCropped {
+                        CropOverlay(crop: $recipe.crop, aspect: aspect, imageRect: imageRect, imageSize: preview.size)
+                    }
+                } else if couldNotOpen {
+                    Text("Couldn't open this photo for editing.")
+                        .font(.metroBody)
+                        .foregroundStyle(metro.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ProgressView().tint(metro.accentColor).frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            .contentShape(Rectangle())
+            // Touch and hold to compare with the photo before adjustments.
+            .onLongPressGesture(minimumDuration: 0.15, maximumDistance: 40) {} onPressingChanged: { pressing in
+                if mode != .crop { showsOriginal = pressing }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(showsOriginal ? "Original photo" : "Edited photo")
             .padding(.vertical, 12)
 
-            HStack(spacing: 20) {
-                ForEach(CropAspect.allCases) { option in
-                    Button(option.title) { setAspect(option) }
-                        .font(.metro(17, .semilight))
-                        .foregroundStyle(option == aspect ? metro.accentColor : metro.foreground)
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(option == aspect ? .isSelected : [])
+            modeRow
+                .padding(.bottom, 10)
+
+            Group {
+                switch mode {
+                case .crop: aspectRow
+                case .adjust: adjustControls
+                case .looks: looksRow
                 }
             }
-            .padding(.bottom, 12)
+            .frame(height: 96, alignment: .top)
+            .disabled(session == nil)
 
             if failed {
                 Text("Couldn't save this edit. Try again.")
@@ -63,11 +87,11 @@ struct EditorView: View {
         .background(metro.background)
         .metroAppBar(
             [
-                AppBarButton(title: "rotate", systemImage: "rotate.left") { rotate() },
-                AppBarButton(title: "save", systemImage: "checkmark", isEnabled: !isSaving && preview != nil) { save() },
+                AppBarButton(title: "rotate", systemImage: "rotate.left", isEnabled: session != nil) { rotate() },
+                AppBarButton(title: "save", systemImage: "checkmark", isEnabled: !isSaving && session != nil) { save() },
                 AppBarButton(title: "cancel", systemImage: "xmark") { dismiss() },
             ],
-            menu: [AppBarMenuItem(title: "reset") { reset() }],
+            menu: menu,
             isExpanded: $isAppBarExpanded
         )
         .overlay {
@@ -77,12 +101,209 @@ struct EditorView: View {
             }
         }
         .task {
-            let side = 1200 * displayScale
-            for await image in ImageLoader.shared.images(for: asset, targetSize: CGSize(width: side, height: side), contentMode: .aspectFit) {
-                source = image
-                preview = image
+            do {
+                let session = try await library.editSession(for: asset)
+                self.session = session
+                recipe = session.recipe
+                if let look = recipe.look, look.adjustments == recipe.adjustments { mode = .looks }
+                requestRender()
+                await renderLookThumbnails(from: session.preview)
+            } catch {
+                couldNotOpen = true
             }
         }
+        .onChange(of: renderKey) { requestRender() }
+    }
+
+    // MARK: Controls
+
+    private var modeRow: some View {
+        HStack(spacing: 24) {
+            ForEach(EditMode.allCases) { option in
+                Button(option.rawValue) {
+                    withAnimation(MetroMotion.fade) { mode = option }
+                }
+                .font(.metro(24, .semilight))
+                .foregroundStyle(option == mode ? metro.foreground : metro.secondary)
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(option == mode ? .isSelected : [])
+            }
+        }
+    }
+
+    private var aspectRow: some View {
+        HStack(spacing: 20) {
+            ForEach(CropAspect.allCases) { option in
+                Button(option.title) { setAspect(option) }
+                    .font(.metro(17, .semilight))
+                    .foregroundStyle(option == aspect ? metro.accentColor : metro.foreground)
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(option == aspect ? .isSelected : [])
+            }
+        }
+    }
+
+    private var adjustControls: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 18) {
+                    ForEach(Adjustment.allCases) { adjustment in
+                        Button {
+                            selected = adjustment
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(adjustment.title)
+                                // Marks the sliders that have been moved.
+                                if recipe.adjustments[adjustment] != 0 {
+                                    Rectangle().fill(metro.accentColor).frame(width: 5, height: 5)
+                                }
+                            }
+                            .font(.metro(17, .semilight))
+                            .foregroundStyle(adjustment == selected ? metro.accentColor : metro.foreground)
+                            .frame(minHeight: 32)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(adjustment == selected ? .isSelected : [])
+                        .accessibilityValue(recipe.adjustments[adjustment] == 0 ? "" : percent(recipe.adjustments[adjustment]))
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
+
+            HStack(spacing: 12) {
+                MetroSlider(
+                    label: selected.title,
+                    value: Binding {
+                        recipe.adjustments[selected]
+                    } set: {
+                        recipe.adjustments[selected] = $0
+                        recipe.look = nil
+                    },
+                    range: selected.range,
+                    resting: 0
+                )
+                Text(percent(recipe.adjustments[selected]))
+                    .font(.metroCaption)
+                    .monospacedDigit()
+                    .foregroundStyle(metro.secondary)
+                    .frame(width: 40, alignment: .trailing)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    private var looksRow: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                lookTile(nil, title: "none")
+                ForEach(Look.allCases) { look in
+                    lookTile(look, title: look.rawValue)
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func lookTile(_ look: Look?, title: String) -> some View {
+        let isSelected = look == nil ? recipe.adjustments.isNeutral : recipe.look == look
+        return Button {
+            recipe.adjustments = look?.adjustments ?? Adjustments()
+            recipe.look = look
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Group {
+                    if let thumbnail = lookThumbnails[look] {
+                        Image(uiImage: thumbnail).resizable().scaledToFill()
+                    } else {
+                        metro.chrome
+                    }
+                }
+                .frame(width: 64, height: 64)
+                .clipped()
+                .overlay {
+                    if isSelected { Rectangle().strokeBorder(metro.accentColor, lineWidth: 3) }
+                }
+                Text(title)
+                    .font(.metroCaption)
+                    .foregroundStyle(isSelected ? metro.accentColor : metro.foreground)
+            }
+        }
+        .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var menu: [AppBarMenuItem] {
+        var items = [AppBarMenuItem(title: "reset all", isEnabled: !recipe.isIdentity) { resetAll() }]
+        if asset.hasAdjustments {
+            items.append(AppBarMenuItem(title: "revert to original") { revert() })
+        }
+        return items
+    }
+
+    private func percent(_ value: Double) -> String {
+        let rounded = Int((value * 100).rounded())
+        return rounded > 0 ? "+\(rounded)" : "\(rounded)"
+    }
+
+    // MARK: Rendering
+
+    private struct RenderKey: Equatable {
+        var recipe: EditRecipe
+        var includesCrop: Bool
+        var original: Bool
+    }
+
+    private var renderKey: RenderKey {
+        RenderKey(recipe: recipe, includesCrop: mode != .crop, original: showsOriginal)
+    }
+
+    /// Renders the newest state once the previous render finishes, so a slider drag never queues up renders.
+    private func requestRender() {
+        guard session != nil else { return }
+        guard !isRendering else {
+            needsRender = true
+            return
+        }
+        isRendering = true
+        Task {
+            repeat {
+                needsRender = false
+                guard let session else { break }
+                var key = renderKey
+                if key.original { key.recipe.adjustments = Adjustments() }
+                let source = UncheckedBox(value: session.preview)
+                let rendered = await Task.detached(priority: .userInitiated) { [key] in
+                    PhotoEditing.preview(of: source.value, recipe: key.recipe, includingCrop: key.includesCrop).map(UncheckedBox.init)
+                }.value
+                if let rendered {
+                    preview = rendered.value
+                    previewIsCropped = key.includesCrop
+                }
+            } while needsRender
+            isRendering = false
+        }
+    }
+
+    private func renderLookThumbnails(from image: CIImage) async {
+        let scale = 160 / max(image.extent.width, image.extent.height)
+        let small = UncheckedBox(value: image.transformed(by: CGAffineTransform(scaleX: scale, y: scale)))
+        let looks: [Look?] = [nil] + Look.allCases
+        for look in looks {
+            let recipe = EditRecipe(adjustments: look?.adjustments ?? Adjustments())
+            let thumbnail = await Task.detached(priority: .utility) {
+                PhotoEditing.preview(of: small.value, recipe: recipe, includingCrop: false).map(UncheckedBox.init)
+            }.value
+            lookThumbnails[look] = thumbnail?.value
+        }
+    }
+
+    // MARK: Actions
+
+    /// The rotated photo's size before cropping, for fitting crop ratios.
+    private var rotatedSize: CGSize {
+        guard let extent = session?.preview.extent.size else { return .zero }
+        return recipe.quarterTurns % 2 == 0 ? extent : CGSize(width: extent.height, height: extent.width)
     }
 
     private func fittedRect(for size: CGSize, in bounds: CGSize) -> CGRect {
@@ -93,31 +314,27 @@ struct EditorView: View {
     }
 
     private func rotate() {
-        quarterTurns = (quarterTurns + 1) % 4
-        guard let source else { return }
-        preview = PhotoEditing.preview(of: source, quarterTurns: quarterTurns)
-        setAspect(aspect)
+        recipe = recipe.rotatedLeft()
+        if aspect != .free { setAspect(aspect) }
     }
 
-    private func reset() {
-        quarterTurns = 0
-        preview = source
+    private func resetAll() {
+        recipe = EditRecipe()
         aspect = .free
-        crop = CGRect(x: 0, y: 0, width: 1, height: 1)
     }
 
     private func setAspect(_ option: CropAspect) {
         aspect = option
-        guard let size = preview?.size, let ratio = option.ratio(for: size) else {
-            crop = CGRect(x: 0, y: 0, width: 1, height: 1)
+        guard let ratio = option.ratio(for: rotatedSize) else {
+            recipe.crop = CGRect(x: 0, y: 0, width: 1, height: 1)
             return
         }
-        crop = CropMath.centered(ratio: ratio, imageSize: size)
+        recipe.crop = CropMath.centered(ratio: ratio, imageSize: rotatedSize)
     }
 
     private func save() {
-        let recipe = EditRecipe(quarterTurns: quarterTurns, crop: crop)
-        guard !recipe.isIdentity else {
+        guard let session else { return }
+        guard recipe != session.recipe else {
             dismiss()
             return
         }
@@ -125,7 +342,7 @@ struct EditorView: View {
         failed = false
         Task {
             do {
-                try await library.applyEdit(recipe, to: asset)
+                try await library.applyEdit(recipe, in: session)
                 dismiss()
             } catch {
                 failed = true
@@ -133,6 +350,24 @@ struct EditorView: View {
             isSaving = false
         }
     }
+
+    private func revert() {
+        isSaving = true
+        Task {
+            do {
+                try await library.revertEdits(asset)
+                dismiss()
+            } catch {
+                failed = true
+            }
+            isSaving = false
+        }
+    }
+}
+
+enum EditMode: String, CaseIterable, Identifiable {
+    case crop, adjust, looks
+    var id: String { rawValue }
 }
 
 enum CropAspect: String, CaseIterable, Identifiable {

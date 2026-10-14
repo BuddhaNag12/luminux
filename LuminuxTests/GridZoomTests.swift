@@ -22,4 +22,25 @@ struct GridZoomTests {
         #expect(GridZoom.nearestLevel(to: 5) == 4)
         #expect(GridZoom.nearestLevel(to: 20) == 8)
     }
+
+    @Test func aQuickFlickTakesOneStep() {
+        #expect(GridZoom.columns(after: 4, magnification: 1.05, velocity: 2) == 3)
+        #expect(GridZoom.columns(after: 4, magnification: 0.95, velocity: -2) == 6)
+        #expect(GridZoom.columns(after: 4, magnification: 1.05, velocity: 0) == 4)
+    }
+
+    @Test func theGridScalesFreelyUpToTheEndLevels() {
+        let limits = GridZoom.scaleLimits(for: 4)
+        #expect(limits == 0.5...2)
+        #expect(GridZoom.rubberBand(1.5, limits: limits) == 1.5)
+        #expect(GridZoom.rubberBand(0.6, limits: limits) == 0.6)
+    }
+
+    @Test func pastTheEndLevelsTheGridResists() {
+        let limits = GridZoom.scaleLimits(for: 2)
+        let stretched = GridZoom.rubberBand(3, limits: limits)
+        #expect(stretched > 1 && stretched < 1.5)
+        let squeezed = GridZoom.rubberBand(0.1, limits: GridZoom.scaleLimits(for: 8))
+        #expect(squeezed < 1 && squeezed > 0.6)
+    }
 }

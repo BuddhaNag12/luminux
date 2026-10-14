@@ -23,76 +23,144 @@ struct ProPitch: View {
         Perk(glyph: "rectangle.split.2x1", title: "wide live tiles", detail: "Medium and large photo tiles for the home screen."),
         Perk(glyph: "pin", title: "unlimited pins", detail: "Pin as many albums and photo sets to the hub as you like."),
         Perk(glyph: "play.rectangle", title: "slideshow", detail: "A slow pan and zoom through any collection."),
-        Perk(glyph: "crop.rotate", title: "editing", detail: "Rotate and crop, saved back to your library."),
+        Perk(glyph: "person.crop.rectangle.stack", title: "lift subjects", detail: "Touch and hold a person or pet to copy, share or drag it out."),
+        Perk(glyph: "slider.horizontal.3", title: "editing", detail: "Crop, light, colour and looks, saved back to your library and editable later."),
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 8) {
             if store.isUnlocked {
-                Text("Pro is unlocked. Thank you for supporting Luminux.")
-                    .font(.metroBody)
-                    .foregroundStyle(metro.secondary)
+                unlockedCard
                     .metroFeather(row: firstRow)
             } else {
-                ForEach(Array(perks.enumerated()), id: \.element.id) { index, perk in
-                    HStack(alignment: .top, spacing: 14) {
-                        metro.accentColor
-                            .frame(width: 48, height: 48)
-                            .overlay {
-                                Image(systemName: perk.glyph)
-                                    .font(.system(size: 20, weight: .light))
-                                    .foregroundStyle(.white)
-                            }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(perk.title).font(.metro(20, .semilight))
-                            // Brighter than the usual secondary text, so it reads over the hub's photo.
-                            Text(perk.detail)
-                                .font(.metroCaption)
-                                .foregroundStyle(metro.foreground.opacity(0.75))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                offerCard
+                    .metroFeather(row: firstRow)
+                    .padding(.bottom, 16)
+
+                Text("what you get")
+                    .font(.metro(22, .semilight))
+                    .foregroundStyle(metro.secondary)
+                    .padding(.bottom, 4)
+                    .accessibilityAddTraits(.isHeader)
+                    .metroFeather(row: firstRow + 1)
+
+                VStack(spacing: 0) {
+                    ForEach(Array(perks.enumerated()), id: \.element.id) { index, perk in
+                        perkRow(perk, isFirst: index == 0)
+                            .metroFeather(row: firstRow + 2 + index)
                     }
-                    .accessibilityElement(children: .combine)
-                    .metroFeather(row: firstRow + index)
                 }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Button(store.product.map { "unlock for \($0.displayPrice)" } ?? "unlock") {
-                        Task { await store.purchase(with: purchase) }
-                    }
-                    .buttonStyle(.metro)
-                    .disabled(store.product == nil || store.isPurchasing)
-                    .opacity(store.product == nil ? 0.4 : 1)
-
-                    Text(store.product == nil
-                         ? "Can't reach the App Store right now."
-                         : "One payment, yours for good. No subscription.")
-                        .font(.metroCaption)
-                        .foregroundStyle(metro.foreground.opacity(0.75))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Button {
-                        Task { await store.restore() }
-                    } label: {
-                        Text("restore purchase")
-                            .font(.metro(17, .semilight))
-                            .underline()
-                            .frame(minHeight: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .metroFeather(row: firstRow + perks.count)
+                // Slightly see-through, so the hub's photo shows behind the list in its Pro panel.
+                .background(metro.chrome.opacity(0.92))
             }
 
             if let message = store.message {
                 Text(message)
                     .font(.metroCaption)
-                    .foregroundStyle(metro.accentColor)
+                    .foregroundStyle(metro.foreground)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
             }
         }
         .task { await store.refresh() }
+    }
+
+    /// The price and the buy button on an accent block, so the offer is the first thing on the page.
+    private var offerCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("LUMINUX PRO").font(.metroOverline).tracking(1.5)
+            Text(store.product?.displayPrice ?? "pro")
+                .font(.metro(48, .light))
+                .padding(.top, 10)
+            Text(store.product == nil
+                 ? "Can't reach the App Store right now."
+                 : "One payment, yours for good. No subscription, no ads.")
+                .font(.metroCaption)
+                .opacity(0.9)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                Task { await store.purchase(with: purchase) }
+            } label: {
+                Text(store.isPurchasing ? "unlocking…" : "unlock pro")
+                    .font(.metro(17, .semibold))
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(.white)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
+            .disabled(store.product == nil || store.isPurchasing)
+            .opacity(store.product == nil ? 0.5 : 1)
+            .padding(.top, 20)
+            .accessibilityLabel(store.product.map { "Unlock Pro for \($0.displayPrice)" } ?? "Unlock Pro")
+
+            Button {
+                Task { await store.restore() }
+            } label: {
+                Text("restore purchase")
+                    .font(.metro(15, .semilight))
+                    .underline()
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+        .foregroundStyle(.white)
+        .padding(20)
+        .padding(.bottom, -8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(metro.accentColor)
+    }
+
+    private var unlockedCard: some View {
+        HStack(spacing: 14) {
+            metro.accentColor
+                .frame(width: 48, height: 48)
+                .overlay {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 20, weight: .light))
+                        .foregroundStyle(.white)
+                }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("pro unlocked").font(.metro(20, .semilight))
+                Text("Thank you for supporting Luminux.")
+                    .font(.metroCaption)
+                    .foregroundStyle(metro.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(metro.chrome)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func perkRow(_ perk: Perk, isFirst: Bool) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: perk.glyph)
+                .font(.system(size: 20, weight: .light))
+                // Not the accent: dark accents are too dim on the panel.
+                .foregroundStyle(metro.foreground)
+                .frame(width: 28)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(perk.title).font(.metro(17, .semilight))
+                Text(perk.detail)
+                    .font(.metroCaption)
+                    .foregroundStyle(metro.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .overlay(alignment: .top) {
+            if !isFirst {
+                Rectangle().fill(metro.foreground.opacity(0.12)).frame(height: 1).padding(.leading, 56)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -128,12 +196,13 @@ struct ProView: View {
                 if let trial, !store.isUnlocked {
                     tryOnce(trial)
                         .metroFeather(row: 1)
-                        .padding(.bottom, 32)
+                        .padding(.bottom, 24)
                 }
 
                 ProPitch(firstRow: trial == nil ? 1 : 2)
 
-                if let onClose {
+                // With an ad offer, "not now" sits beside it instead.
+                if let onClose, store.isUnlocked || trial == nil {
                     Button(store.isUnlocked ? "done" : "not now", action: onClose)
                         .buttonStyle(.metro)
                         .padding(.top, 32)
@@ -153,6 +222,7 @@ struct ProView: View {
         }
     }
 
+    /// The quick way in when the page opened from a locked feature: one ad for one use.
     private func tryOnce(_ trial: ProTrial) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(trial.title).font(.metro(20, .semilight))
@@ -160,13 +230,29 @@ struct ProView: View {
                 .font(.metroCaption)
                 .foregroundStyle(metro.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button(rewardedAds.isLoading ? "loading ad…" : "watch an ad") {
-                Task {
-                    if await rewardedAds.watch() { trial.onEarned() }
+            HStack(spacing: 12) {
+                Button {
+                    Task {
+                        if await rewardedAds.watch() { trial.onEarned() }
+                    }
+                } label: {
+                    Text(rewardedAds.isLoading ? "loading ad…" : "watch an ad")
+                        .font(.metro(20, .semilight))
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, 6)
+                        .frame(minHeight: 56)
+                }
+                .buttonStyle(.metro)
+                .disabled(rewardedAds.isLoading)
+                if let onClose {
+                    Button(action: onClose) {
+                        Text("not now")
+                            .frame(maxWidth: .infinity, minHeight: 56)
+                    }
+                    .buttonStyle(.metro)
                 }
             }
-            .buttonStyle(.metro)
-            .disabled(rewardedAds.isLoading)
             if let message = rewardedAds.message {
                 Text(message)
                     .font(.metroCaption)
@@ -174,5 +260,8 @@ struct ProView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(Rectangle().strokeBorder(metro.foreground.opacity(0.35), lineWidth: 1))
     }
 }

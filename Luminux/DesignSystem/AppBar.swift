@@ -1,12 +1,20 @@
 import SwiftUI
 
 struct AppBarButton: Identifiable {
+    /// Stays the same when the title flips (favorite/unfavorite), so the button updates in place.
+    let id: String
     let title: String
     let systemImage: String
     var isEnabled = true
     let action: () -> Void
 
-    var id: String { title }
+    init(id: String? = nil, title: String, systemImage: String, isEnabled: Bool = true, action: @escaping () -> Void) {
+        self.id = id ?? title
+        self.title = title
+        self.systemImage = systemImage
+        self.isEnabled = isEnabled
+        self.action = action
+    }
 }
 
 struct AppBarMenuItem: Identifiable {
@@ -37,13 +45,19 @@ struct MetroAppBar: View {
                             VStack(spacing: 6) {
                                 Image(systemName: button.systemImage)
                                     .font(.system(size: 18, weight: .light))
+                                    .contentTransition(.symbolEffect(.replace))
+                                    .symbolEffect(.bounce, value: button.systemImage)
+                                    .animation(MetroMotion.snappy, value: button.systemImage)
                                     .frame(width: MetroMetrics.appBarButton, height: MetroMetrics.appBarButton)
                                 if isExpanded {
                                     Text(button.title)
                                         .font(.metro(12))
                                         .lineLimit(1)
                                         .fixedSize()
-                                        .transition(.opacity)
+                                        .contentTransition(.interpolate)
+                                        // As wide as the circle, so a longer label doesn't push the other buttons aside.
+                                        .frame(width: MetroMetrics.appBarButton)
+                                        .transition(.opacity.combined(with: .offset(y: 6)))
                                 }
                             }
                         }
@@ -67,9 +81,9 @@ struct MetroAppBar: View {
                 .accessibilityLabel(isExpanded ? "Less" : "More")
             }
 
-            if isExpanded && !menuItems.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(menuItems) { item in
+            VStack(alignment: .leading, spacing: 0) {
+                if isExpanded {
+                    ForEach(Array(menuItems.enumerated()), id: \.element.id) { index, item in
                         Button {
                             collapse()
                             item.action()
@@ -82,13 +96,18 @@ struct MetroAppBar: View {
                         .buttonStyle(.plain)
                         .disabled(!item.isEnabled)
                         .opacity(item.isEnabled ? 1 : 0.4)
+                        // Items rise in one after another, like the original menu; they leave together.
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .offset(y: 12))
+                                .animation(MetroMotion.standard.delay(Double(index) * 0.02)),
+                            removal: .opacity
+                        ))
                     }
                 }
-                .padding(.horizontal, MetroMetrics.margin + 12)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+            .padding(.horizontal, MetroMetrics.margin + 12)
+            .padding(.top, isExpanded && !menuItems.isEmpty ? 12 : 0)
+            .padding(.bottom, isExpanded && !menuItems.isEmpty ? 8 : 0)
         }
         .frame(minHeight: MetroMetrics.appBarHeight, alignment: .top)
         .foregroundStyle(metro.foreground)
@@ -124,6 +143,7 @@ struct CircleButtonStyle: ButtonStyle {
             }
             .opacity(isEnabled ? 1 : 0.4)
             .contentShape(Rectangle())
+            .animation(MetroMotion.press, value: configuration.isPressed)
     }
 }
 

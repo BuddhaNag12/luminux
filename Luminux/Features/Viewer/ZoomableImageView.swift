@@ -1,34 +1,68 @@
 import PhotosUI
 import SwiftUI
 import UIKit
+import VisionKit
 
-/// Pinch and double-tap zoom on a photo; a single tap toggles the viewer chrome.
+/// Pinch and double-tap zoom on a photo; a single tap toggles the viewer chrome. Touch and hold lifts the subject
+/// (a person, pet or object) to copy, share or drag, like Photos.
 struct ZoomableImageView: UIViewRepresentable {
     let image: UIImage?
     var isCurrent: Bool
+    /// Subject lifting is a Pro feature; while it's locked, holding the photo offers it instead.
+    var allowsLift = false
+    var lifter: SubjectLifter?
     var onSingleTap: () -> Void
     var onZoomChange: (Bool) -> Void = { _ in }
+    var onLockedLift: () -> Void = {}
+    /// True while a lifted subject is highlighted, so the viewer can hold still.
+    var onSubjectHighlight: (Bool) -> Void = { _ in }
 
     func makeUIView(context: Context) -> ZoomingScrollView {
         let view = ZoomingScrollView()
-        view.onSingleTap = onSingleTap
-        view.onZoomChange = onZoomChange
+        update(view)
         return view
     }
 
     func updateUIView(_ view: ZoomingScrollView, context: Context) {
+        update(view)
+    }
+
+    private func update(_ view: ZoomingScrollView) {
         view.onSingleTap = onSingleTap
         view.onZoomChange = onZoomChange
+        view.onLockedLift = onLockedLift
+        view.onSubjectHighlight = onSubjectHighlight
+        lifter?.view = view
         view.setImage(image)
+        view.updateLift(isCurrent: isCurrent, allowsLift: allowsLift)
         if !isCurrent { view.resetZoom(animated: false) }
     }
 }
 
-final class ZoomingScrollView: UIScrollView, UIScrollViewDelegate {
+/// Lets SwiftUI ask the photo view for its subject, for the VoiceOver action.
+@MainActor
+final class SubjectLifter {
+    weak var view: ZoomingScrollView?
+
+    func copySubject() async -> Bool {
+        await view?.copySubject() ?? false
+    }
+}
+
+final class ZoomingScrollView: UIScrollView, UIScrollViewDelegate, ImageAnalysisInteractionDelegate {
     var onSingleTap: () -> Void = {}
     var onZoomChange: (Bool) -> Void = { _ in }
+    var onLockedLift: () -> Void = {}
+    var onSubjectHighlight: (Bool) -> Void = { _ in }
     private var wasZoomed = false
     private let imageView = UIImageView()
+    private let liftInteraction = ImageAnalysisInteraction()
+    private let lockedPress = UILongPressGestureRecognizer()
+    private var analysisTask: Task<Void, Never>?
+    private weak var analyzedImage: UIImage?
+    private var isHighlighting = false
+
+    private static let analyzer = ImageAnalyzer()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -49,6 +83,15 @@ final class ZoomingScrollView: UIScrollView, UIScrollViewDelegate {
         let singleTap = UITapGestureRecognizer(target: self, action: #selector(handleSingleTap))
         singleTap.require(toFail: doubleTap)
         addGestureRecognizer(singleTap)
+
+        imageView.isUserInteractionEnabled = true
+        liftInteraction.delegate = self
+        liftInteraction.preferredInteractionTypes = []
+        imageView.addInteraction(liftInteraction)
+        lockedPress.minimumPressDuration = 0.5
+        lockedPress.addTarget(self, action: #selector(handleLockedPress(_:)))
+        lockedPress.isEnabled = false
+        imageView.addGestureRecognizer(lockedPress)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -56,7 +99,38 @@ final class ZoomingScrollView: UIScrollView, UIScrollViewDelegate {
     func setImage(_ image: UIImage?) {
         guard imageView.image !== image else { return }
         imageView.image = image
+        analysisTask?.cancel()
+        liftInteraction.analysis = nil
+        analyzedImage = nil
         setNeedsLayout()
+    }
+
+    /// Analyses the current photo for subjects once lifting is allowed; other pages and locked lifting skip the work.
+    func updateLift(isCurrent: Bool, allowsLift: Bool) {
+        let isSupported = ImageAnalyzer.isSupported
+        liftInteraction.preferredInteractionTypes = allowsLift && isSupported ? .imageSubject : []
+        lockedPress.isEnabled = !allowsLift && isSupported && isCurrent
+        guard allowsLift, isCurrent, isSupported, let image = imageView.image, analyzedImage !== image else { return }
+        analyzedImage = image
+        analysisTask?.cancel()
+        analysisTask = Task { [weak self] in
+            let analysis = try? await Self.analyzer.analyze(image, configuration: ImageAnalyzer.Configuration([.visualLookUp]))
+            guard let self, !Task.isCancelled, self.imageView.image === image else { return }
+            self.liftInteraction.analysis = analysis
+        }
+    }
+
+    func copySubject() async -> Bool {
+        // The interaction's own image of all subjects, so nothing non-Sendable leaves the main actor.
+        let subjects = await liftInteraction.subjects
+        guard !subjects.isEmpty, let image = try? await liftInteraction.image(for: subjects) else { return false }
+        UIPasteboard.general.image = image
+        return true
+    }
+
+    func interaction(_ interaction: ImageAnalysisInteraction, highlightSelectedItemsDidChange highlightSelectedItems: Bool) {
+        isHighlighting = highlightSelectedItems
+        onSubjectHighlight(highlightSelectedItems)
     }
 
     func resetZoom(animated: Bool) {
@@ -116,7 +190,18 @@ final class ZoomingScrollView: UIScrollView, UIScrollViewDelegate {
         }
     }
 
-    @objc private func handleSingleTap() { onSingleTap() }
+    @objc private func handleSingleTap() {
+        // A tap while a subject is lifted just puts it down.
+        if isHighlighting {
+            liftInteraction.highlightedSubjects = []
+            return
+        }
+        onSingleTap()
+    }
+
+    @objc private func handleLockedPress(_ recognizer: UILongPressGestureRecognizer) {
+        if recognizer.state == .began { onLockedLift() }
+    }
 }
 
 /// A Live Photo that plays its motion once each time it becomes the current photo.

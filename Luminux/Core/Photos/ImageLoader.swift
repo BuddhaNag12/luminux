@@ -31,6 +31,17 @@ nonisolated final class ImageLoader: @unchecked Sendable {
         }
     }
 
+    /// Starts loading grid thumbnails ahead of time, replacing the last batch. Matches the grid's request options so
+    /// PhotoKit can serve the cached images.
+    func cache(_ assets: [PHAsset], side: CGFloat) {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .opportunistic
+        options.resizeMode = .fast
+        options.isNetworkAccessAllowed = true
+        manager.stopCachingImagesForAllAssets()
+        manager.startCachingImages(for: assets, targetSize: CGSize(width: side, height: side), contentMode: .aspectFill, options: options)
+    }
+
     func livePhoto(for asset: PHAsset, targetSize: CGSize) -> AsyncStream<PHLivePhoto> {
         let manager = manager
         return AsyncStream { continuation in
