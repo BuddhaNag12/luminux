@@ -19,6 +19,8 @@ struct AlbumView: View {
     @State private var lastTitle = "album"
     @State private var bottomInset: CGFloat = 0
     @State private var pinRequest: PinRequest?
+    @State private var isWidget = false
+    @State private var widgetReadyTitle: String?
 
     private var album: Album? { library.album(id: albumID) }
 
@@ -51,6 +53,8 @@ struct AlbumView: View {
             if let title { lastTitle = title }
         }
         .metroAppBar(buttons, menu: menu, isExpanded: $isAppBarExpanded)
+        .widgetInstructions(for: $widgetReadyTitle)
+        .onAppear { isWidget = LiveTileExporter.contains(widgetCollection.id) }
         .assetActionSheets(share: $share, addToAlbum: $addToAlbum)
         .hubPinning($pinRequest)
         .alert("Rename album", isPresented: $isRenaming) {
@@ -93,6 +97,10 @@ struct AlbumView: View {
         return [AppBarButton(title: "select", systemImage: "checklist") { selection.begin() }]
     }
 
+    private var widgetCollection: LiveTileStore.Collection {
+        .album(albumID, title: album?.title ?? lastTitle)
+    }
+
     private var menu: [AppBarMenuItem] {
         if selection.isActive {
             var items = [
@@ -117,6 +125,10 @@ struct AlbumView: View {
                 ? AppBarMenuItem(title: "unpin from collection") { hubTiles.unpin(.album(albumID)) }
                 : AppBarMenuItem(title: "pin to collection") { pinRequest = PinRequest(target: .album(albumID)) },
         ]
+        items.append(WidgetCollection.menuItem(for: widgetCollection, isAdded: isWidget, library: library, hubTiles: hubTiles) { added in
+            isWidget = added
+            if added { widgetReadyTitle = album?.title ?? lastTitle }
+        })
         if album?.isUserAlbum == true {
             items += [
                 AppBarMenuItem(title: "rename") {

@@ -104,9 +104,22 @@ private struct AppShell: View {
                 .navigationTransition(.zoom(sourceID: navigator.viewerCurrentID ?? request.startID, in: zoom))
         }
         .onOpenURL { url in
-            // The live tile opens the hub; a locked wide tile opens the Pro page.
+            // The live tile opens the hub or its collection; a locked wide tile opens the Pro page.
             navigator.viewer = nil
-            navigator.path = url.host() == "pro" && !store.isUnlocked ? [.pro] : []
+            if url.host() == "pro" && !store.isUnlocked {
+                navigator.path = [.pro]
+            } else if url.host() == "collection",
+                      let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "id" })?.value {
+                if id.hasPrefix("album:") {
+                    navigator.path = [.album(String(id.dropFirst("album:".count)))]
+                } else if id.hasPrefix("set:") {
+                    navigator.path = [.photoSet(String(id.dropFirst("set:".count)))]
+                } else {
+                    navigator.path = []
+                }
+            } else {
+                navigator.path = []
+            }
         }
         .task {
             await store.refresh()
@@ -134,7 +147,7 @@ private struct AppShell: View {
             // Debounce bursts of library changes.
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
-            await LiveTileExporter.export(from: library, accent: settings.accent)
+            await LiveTileExporter.export(from: library, hubTiles: hubTiles, accent: settings.accent)
         }
     }
 }

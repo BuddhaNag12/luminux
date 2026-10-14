@@ -15,6 +15,8 @@ struct PhotoSetView: View {
     @State private var isRenaming = false
     @State private var newName = ""
     @State private var confirmsUnpin = false
+    @State private var isWidget = false
+    @State private var widgetReadyTitle: String?
     /// Keeps the title on screen while an unpinned set's page swings away.
     @State private var lastTitle = "photos"
     @State private var bottomInset: CGFloat = 0
@@ -55,6 +57,8 @@ struct PhotoSetView: View {
             if let title { lastTitle = title }
         }
         .metroAppBar(photoSet == nil ? [] : buttons, menu: photoSet == nil ? [] : menu, isExpanded: $isAppBarExpanded)
+        .widgetInstructions(for: $widgetReadyTitle)
+        .onAppear { isWidget = LiveTileExporter.contains(widgetCollection.id) }
         .assetActionSheets(share: $share, addToAlbum: $addToAlbum)
         .alert("Rename", isPresented: $isRenaming) {
             TextField("Name", text: $newName)
@@ -86,6 +90,10 @@ struct PhotoSetView: View {
         return [AppBarButton(title: "select", systemImage: "checklist") { selection.begin() }]
     }
 
+    private var widgetCollection: LiveTileStore.Collection {
+        .photoSet(setID, title: photoSet?.title ?? lastTitle)
+    }
+
     private var menu: [AppBarMenuItem] {
         if selection.isActive {
             return [
@@ -100,6 +108,10 @@ struct PhotoSetView: View {
             AppBarMenuItem(title: "rename") {
                 newName = photoSet?.title ?? ""
                 isRenaming = true
+            },
+            WidgetCollection.menuItem(for: widgetCollection, isAdded: isWidget, library: library, hubTiles: hubTiles) { added in
+                isWidget = added
+                if added { widgetReadyTitle = photoSet?.title ?? lastTitle }
             },
             AppBarMenuItem(title: "unpin") { confirmsUnpin = true },
         ]
