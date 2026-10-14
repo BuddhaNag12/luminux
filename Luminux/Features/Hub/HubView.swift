@@ -38,6 +38,10 @@ struct HubView: View {
         settings.movesWithPhone && !reduceMotion && scenePhase == .active && navigator.path.isEmpty && navigator.viewer == nil
     }
 
+    private var tracksHub: Bool {
+        scenePhase == .active && navigator.path.isEmpty && navigator.viewer == nil
+    }
+
     private var showsNews: Bool { !store.isUnlocked && news.isEnabled }
 
     private let photoColumns = Array(repeating: GridItem(.flexible(), spacing: MetroMetrics.gutter), count: 3)
@@ -79,6 +83,8 @@ struct HubView: View {
             tracks ? tilt.start() : tilt.stop()
         }
         .onDisappear { tilt.stop() }
+        // Live tiles only take turns while the hub is what's on screen.
+        .onChange(of: tracksHub, initial: true) { _, shown in LiveTileScheduler.shared.isPaused = !shown }
         .task(id: store.isUnlocked) {
             // Picks up the remote switch quietly; ads wait until the panel is actually shown.
             guard !store.isUnlocked else { return ads.clear() }
@@ -210,7 +216,9 @@ private struct HubBackground: View {
                 let source = library.favorites.count > 0 ? library.favorites : library.allAssets
                 let photos = source.items(limit: 40).filter { $0.asset.mediaType == .image }
                 guard let pick = photos.randomElement() else { return }
-                for await next in ImageLoader.shared.images(for: pick.asset, targetSize: CGSize(width: 2400, height: 2400)) {
+                // Big enough for the parallax width at 2x; it sits under a dark overlay, so 3x would only cost memory
+                // and a longer first draw while the hub opens.
+                for await next in ImageLoader.shared.images(for: pick.asset, targetSize: CGSize(width: 1800, height: 1800)) {
                     image = next
                 }
             }

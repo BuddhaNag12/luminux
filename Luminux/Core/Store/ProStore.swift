@@ -31,6 +31,7 @@ final class ProStore {
     init() {
         // The last known state, so Pro features don't flicker off while the App Store answers.
         isUnlocked = LiveTileStore.isPro
+        LiveTileStore.isTestBuild = Self.isTestBuild
         updates = Task { [weak self] in
             // Purchases made on another device, Ask to Buy approvals and refunds arrive here.
             for await result in StoreKit.Transaction.updates {

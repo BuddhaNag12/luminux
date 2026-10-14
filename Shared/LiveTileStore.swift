@@ -86,4 +86,13 @@ nonisolated enum LiveTileStore {
         get { defaults?.bool(forKey: proKey) ?? false }
         set { defaults?.set(newValue, forKey: proKey) }
     }
+
+    /// Written by test installs (`PRO_FREE_FOR_TESTING`) so every widget size can be tried without buying Pro; App
+    /// Store builds write false on launch.
+    static var isTestBuild: Bool {
+        get { defaults?.bool(forKey: "isTestBuild") ?? false }
+        set { defaults?.set(newValue, forKey: "isTestBuild") }
+    }
+
+    static var unlocksWideTiles: Bool { isPro || isTestBuild }
 }

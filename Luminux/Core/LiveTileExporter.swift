@@ -12,7 +12,8 @@ enum LiveTileExporter {
         for source in LiveTileStore.Source.allCases {
             let assets = source == .recent ? library.allAssets : library.favorites
             // Recent stays the newest photos; favorites shuffle like collections do.
-            try? LiveTileStore.replaceImages(await jpegs(from: assets, shuffled: source == .favorites), for: source)
+            let data = await jpegs(from: assets, shuffled: source == .favorites)
+            await Task.detached(priority: .utility) { try? LiveTileStore.replaceImages(data, for: source) }.value
         }
 
         // Albums and sets that are gone take their widget choice with them; the rest pick up renames and new photos.
@@ -23,7 +24,9 @@ enum LiveTileExporter {
                 continue
             }
             collection.title = title
-            try? LiveTileStore.replaceImages(await jpegs(from: assets, shuffled: true), for: collection)
+            let data = await jpegs(from: assets, shuffled: true)
+            let stored = collection
+            await Task.detached(priority: .utility) { try? LiveTileStore.replaceImages(data, for: stored) }.value
             kept.append(collection)
         }
         LiveTileStore.collections = kept
@@ -74,7 +77,12 @@ enum LiveTileExporter {
             for await image in ImageLoader.shared.images(for: item.asset, targetSize: CGSize(width: side, height: side)) {
                 latest = image
             }
-            if let data = latest?.jpegData(compressionQuality: 0.8) { jpegs.append(data) }
+            guard let latest else { continue }
+            // Encoding on the main thread dropped frames while the hub was opening.
+            let box = UncheckedBox(value: latest)
+            if let data = await Task.detached(priority: .utility, operation: { box.value.jpegData(compressionQuality: 0.8) }).value {
+                jpegs.append(data)
+            }
         }
         return jpegs
     }

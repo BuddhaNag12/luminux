@@ -96,7 +96,11 @@ struct TileConfigurationIntent: WidgetConfigurationIntent {
 
 struct TileEntry: TimelineEntry {
     let date: Date
+    /// What each photo slot shows, in slot order.
     let imageURLs: [URL]
+    /// The side the changed photo slides in from.
+    var side: TileShuffle.Side = .bottom
+    var generations: [Int] = []
     let accentHex: UInt32
     let title: String
     let isPro: Bool
@@ -111,7 +115,16 @@ struct TileProvider: AppIntentTimelineProvider {
     }
 
     func snapshot(for configuration: TileConfigurationIntent, in context: Context) async -> TileEntry {
-        entry(for: configuration, at: .now, order: configuration.imageURLs)
+        entry(for: configuration, at: .now, order: Array(configuration.imageURLs.prefix(Self.slots(for: context.family))))
+    }
+
+    /// How many photos each size shows.
+    static func slots(for family: WidgetFamily) -> Int {
+        switch family {
+        case .systemMedium: 3
+        case .systemLarge, .systemExtraLarge: 4
+        default: 1
+        }
     }
 
     /// Shuffles the photos every few seconds, like the hub's live tiles. WidgetKit draws each entry ahead of time and
@@ -123,13 +136,12 @@ struct TileProvider: AppIntentTimelineProvider {
         guard urls.count > 1 else {
             return Timeline(entries: [entry(for: configuration, at: .now, order: urls)], policy: .after(.now.addingTimeInterval(3600)))
         }
-        var entries: [TileEntry] = []
-        var date = Date.now
-        var order = urls.shuffled()
-        while entries.count < Self.entriesPerTimeline {
-            entries.append(entry(for: configuration, at: date, order: order))
-            date = date.addingTimeInterval(Self.shuffleInterval)
-            order = Self.reshuffled(order)
+        let steps = TileShuffle.steps(pool: urls, slots: Self.slots(for: context.family), count: Self.entriesPerTimeline)
+        let entries = steps.enumerated().map { index, step in
+            var entry = entry(for: configuration, at: .now.addingTimeInterval(Double(index) * Self.shuffleInterval), order: step.slots)
+            entry.side = step.side
+            entry.generations = step.generations
+            return entry
         }
         return Timeline(entries: entries, policy: .atEnd)
     }
@@ -138,21 +150,13 @@ struct TileProvider: AppIntentTimelineProvider {
     /// Ten minutes of shuffling per timeline.
     static let entriesPerTimeline = 120
 
-    /// A new random order that never leads with the photo that's showing now.
-    static func reshuffled(_ order: [URL]) -> [URL] {
-        guard order.count > 1 else { return order }
-        var next = order.shuffled()
-        while next.first == order.first { next.shuffle() }
-        return next
-    }
-
     private func entry(for configuration: TileConfigurationIntent, at date: Date, order: [URL]) -> TileEntry {
         TileEntry(
             date: date,
             imageURLs: order,
             accentHex: LiveTileStore.accentHex,
             title: configuration.tileTitle,
-            isPro: LiveTileStore.isPro,
+            isPro: LiveTileStore.unlocksWideTiles,
             url: configuration.url,
             needsCollection: configuration.source == .collection && configuration.storedCollection == nil
         )
@@ -228,35 +232,37 @@ struct TileView: View {
 
     @ViewBuilder
     private var collage: some View {
-        let images = entry.imageURLs
         switch family {
         case .systemMedium:
             HStack(spacing: 4) {
-                photo(images[0])
+                photo(0)
                 VStack(spacing: 4) {
-                    photo(images[safe: 1] ?? images[0])
-                    photo(images[safe: 2] ?? images[0])
+                    photo(1)
+                    photo(2)
                 }
             }
-        case .systemLarge:
+        case .systemLarge, .systemExtraLarge:
             Grid(horizontalSpacing: 4, verticalSpacing: 4) {
                 GridRow {
-                    photo(images[0])
-                    photo(images[safe: 1] ?? images[0])
+                    photo(0)
+                    photo(1)
                 }
                 GridRow {
-                    photo(images[safe: 2] ?? images[0])
-                    photo(images[safe: 3] ?? images[0])
+                    photo(2)
+                    photo(3)
                 }
             }
         default:
-            photo(images[0])
+            photo(0)
         }
     }
 
-    /// Each photo slides up into place when the tile shuffles, like the hub's live tiles.
-    private func photo(_ url: URL) -> some View {
-        Color.clear
+    /// The changed photo slides in over the old one from the entry's side; the old one sinks back and fades. The
+    /// old photo's way out doesn't depend on a side, so it can't disagree with the new one's.
+    private func photo(_ slot: Int) -> some View {
+        let images = entry.imageURLs
+        let url = images[safe: slot] ?? images[0]
+        return Color.clear
             .overlay {
                 if let image = UIImage(contentsOfFile: url.path) {
                     Image(uiImage: image).resizable()
@@ -264,10 +270,26 @@ struct TileView: View {
                         .widgetAccentedRenderingMode(.fullColor)
                         .scaledToFill()
                         .id(url)
-                        .transition(.push(from: .bottom))
+                        .zIndex(Double(entry.generations[safe: slot] ?? 0))
+                        .transition(.asymmetric(
+                            insertion: .move(edge: entry.side.edge),
+                            removal: .scale(scale: 0.9).combined(with: .opacity)
+                        ))
                 }
             }
+            .animation(.smooth(duration: 0.7), value: url)
             .clipped()
+    }
+}
+
+extension TileShuffle.Side {
+    var edge: Edge {
+        switch self {
+        case .top: .top
+        case .bottom: .bottom
+        case .leading: .leading
+        case .trailing: .trailing
+        }
     }
 }
 

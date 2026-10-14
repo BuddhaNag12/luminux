@@ -144,8 +144,8 @@ private struct AppShell: View {
         }
         .task(id: TileRefreshKey(changeToken: library.changeToken, accent: settings.accent)) {
             guard library.isLoaded else { return }
-            // Debounce bursts of library changes.
-            try? await Task.sleep(for: .seconds(2))
+            // Debounce bursts of library changes, and let the hub finish opening before the photo work starts.
+            try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             await LiveTileExporter.export(from: library, hubTiles: hubTiles, accent: settings.accent)
         }

@@ -51,11 +51,11 @@ private struct PanoramaDemo: View {
                         }
                         .aspectRatio(1, contentMode: .fit)
                         MetroTile(title: "date", action: { showsJumpList = true }) {
-                            LiveTile(items: swatches, style: .slide, interval: 2...3) { $0.color }
+                            LiveTile(items: swatches, style: .slide) { $0.color }
                         }
                         .aspectRatio(1, contentMode: .fit)
                         MetroTile(title: "favorites", action: {}) {
-                            LiveTile(items: swatches.reversed(), style: .flip, interval: 2...4) { $0.color }
+                            LiveTile(items: swatches.reversed(), style: .flip) { $0.color }
                         }
                         .aspectRatio(1, contentMode: .fit)
                     }
