@@ -35,7 +35,10 @@ struct AboutView: View {
                     .font(.metroTitle)
                     .padding(.leading, -3)
                     .metroFeather(row: 0)
-                    .padding(.bottom, 16)
+                    .padding(.bottom, 24)
+
+                LogoLockup(unit: 0.8, cutout: metro.background)
+                    .padding(.bottom, 24)
 
                 Text(ProStore.isTestBuild ? "\(version) · test build, custom colours unlocked" : version)
                     .font(.metroBody)

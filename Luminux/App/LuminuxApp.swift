@@ -42,21 +42,40 @@ struct LuminuxApp: App {
 
 struct RootView: View {
     @Environment(PhotoLibrary.self) private var library
+    @Environment(AppSettings.self) private var settings
+    @State private var forcesOnboarding = OnboardingView.isForced
+    /// The launch animation plays once per launch, over whatever opens first.
+    @State private var showsSplash = true
 
     var body: some View {
-        #if DEBUG
-        if let gallery = ComponentGallery.requested {
-            ComponentGallery(kind: gallery)
-        } else {
+        Group {
+            #if DEBUG
+            if let gallery = ComponentGallery.requested {
+                ComponentGallery(kind: gallery)
+            } else {
+                content
+            }
+            #else
             content
+            #endif
         }
-        #else
-        content
-        #endif
+        .environment(\.isLaunchSplashShowing, showsSplash)
+        .overlay {
+            if showsSplash {
+                LaunchSplash { showsSplash = false }
+            }
+        }
     }
 
     @ViewBuilder private var content: some View {
-        if library.access.canRead {
+        if !settings.hasSeenOnboarding || forcesOnboarding {
+            OnboardingView {
+                withAnimation(MetroMotion.fade) {
+                    settings.hasSeenOnboarding = true
+                    forcesOnboarding = false
+                }
+            }
+        } else if library.access.canRead {
             AppShell()
         } else {
             PermissionView()

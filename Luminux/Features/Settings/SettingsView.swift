@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(Navigator.self) private var navigator
     @Environment(AdConsent.self) private var adConsent
     @Environment(\.metro) private var metro
+    @State private var showsTour = false
 
     /// The six presets and the custom colour fit one row.
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: Accent.presets.count + 1)
@@ -100,6 +101,7 @@ struct SettingsView: View {
                             Task { await adConsent.presentPrivacyOptions() }
                         }
                     }
+                    link("take the tour", detail: "What Luminux can do, page by page") { showsTour = true }
                     link("about and licences", detail: "Version, fonts and their licences") { navigator.push(.about) }
                 }
                 .metroFeather(row: 14)
@@ -110,6 +112,9 @@ struct SettingsView: View {
         }
         .foregroundStyle(metro.foreground)
         .background(metro.background)
+        .fullScreenCover(isPresented: $showsTour) {
+            OnboardingView(isReplay: true) { showsTour = false }
+        }
         .task {
             await store.refresh()
             if !store.isUnlocked { await adConsent.refreshPrivacyOptions() }

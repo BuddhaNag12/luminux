@@ -8,20 +8,12 @@ struct PermissionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("LUMINUX")
-                .font(.metroOverline)
-                .tracking(1.5)
-                .padding(.bottom, 4)
-
-            Text("photos")
-                .font(.metroPanorama)
-                .lineLimit(1)
-                .fixedSize()
-                .padding(.leading, -6)
+            LogoLockup(unit: 1, cutout: metro.background)
+                .padding(.top, 24)
 
             Text(isDenied ? "access is off" : "your photos, front and centre")
                 .font(.metroSection)
-                .padding(.top, 8)
+                .padding(.top, 32)
 
             Text(isDenied
                  ? "To browse your photos here, turn on photo access for Luminux in Settings."

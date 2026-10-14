@@ -13,6 +13,7 @@ final class AppSettings {
         static let movesWithPhone = "movesWithPhone"
         static let namesJournalPlaces = "namesJournalPlaces"
         static let tiltStrength = "tiltStrength"
+        static let hasSeenOnboarding = "hasSeenOnboarding"
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -51,6 +52,11 @@ final class AppSettings {
         didSet { defaults.set(namesJournalPlaces, forKey: Key.namesJournalPlaces) }
     }
 
+    /// The first-launch tour has been shown (finished or skipped to the end).
+    var hasSeenOnboarding: Bool {
+        didSet { defaults.set(hasSeenOnboarding, forKey: Key.hasSeenOnboarding) }
+    }
+
     var palette: MetroPalette { MetroPalette(theme: theme, accent: accent) }
 
     init(defaults: UserDefaults = .standard) {
@@ -63,6 +69,7 @@ final class AppSettings {
         movesWithPhone = defaults.object(forKey: Key.movesWithPhone) as? Bool ?? true
         namesJournalPlaces = defaults.object(forKey: Key.namesJournalPlaces) as? Bool ?? true
         tiltStrength = defaults.string(forKey: Key.tiltStrength).flatMap(TiltStrength.init) ?? .medium
+        hasSeenOnboarding = defaults.bool(forKey: Key.hasSeenOnboarding)
     }
 }
 
