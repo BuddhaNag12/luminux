@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Like `rotation3DEffect`, but returns an exact identity at 0°. The built-in effect keeps its perspective term at rest,
 /// which throws off hit testing for scroll views inside the rotated view.
-struct PerspectiveRotation: GeometryEffect {
+struct PerspectiveRotation: GeometryEffect, CustomStringConvertible {
     var angle: Double
     var axis: (x: CGFloat, y: CGFloat, z: CGFloat)
     var anchor: UnitPoint = .center
@@ -12,6 +12,12 @@ struct PerspectiveRotation: GeometryEffect {
     var animatableData: Double {
         get { angle }
         set { angle = newValue }
+    }
+
+    /// SwiftUI's async renderer describes custom geometry effects every frame; without this it reflects over the
+    /// struct, which showed up in profiles of tile flips and presses.
+    var description: String {
+        "PerspectiveRotation(\(angle), \(axis.x), \(axis.y), \(axis.z), \(anchor.x), \(anchor.y), \(perspective))"
     }
 
     func effectValue(size: CGSize) -> ProjectionTransform {

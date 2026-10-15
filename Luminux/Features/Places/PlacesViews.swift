@@ -13,6 +13,9 @@ struct PlacesPage: View {
     @State private var position: MapCameraPosition = .automatic
     /// Degrees of latitude the map shows, for merging bubbles.
     @State private var span: Double = 40
+    /// The map is created once the page has turned in: setting MapKit up the first time takes long enough to drop
+    /// frames in the middle of the page's entrance.
+    @State private var showsMap = false
 
     var body: some View {
         ScrollView {
@@ -26,7 +29,12 @@ struct PlacesPage: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .metroFeather(row: 0)
                 } else {
-                    map
+                    ZStack {
+                        metro.chrome
+                        if showsMap {
+                            map.transition(.opacity)
+                        }
+                    }
                         .frame(height: 300)
                         .clipShape(Rectangle())
                         .metroFeather(row: 0)
@@ -37,6 +45,10 @@ struct PlacesPage: View {
         }
         .scrollIndicators(.hidden)
         .padding(.horizontal, MetroMetrics.margin)
+        .task {
+            try? await Task.sleep(for: .milliseconds(450))
+            withAnimation(MetroMotion.fade) { showsMap = true }
+        }
         .onChange(of: journal.places.count, initial: true) {
             if let region = PlaceGrouping.region(showing: journal.places) {
                 position = .region(region)
