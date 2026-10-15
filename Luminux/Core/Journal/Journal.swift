@@ -13,6 +13,8 @@ nonisolated struct JournalNote: Codable, Hashable, Sendable {
 @Observable
 final class Journal {
     private(set) var entries: [JournalEntry] = []
+    /// Every place photos were taken, the most recently visited first; built from the same scan as the entries.
+    private(set) var places: [Place] = []
     private(set) var isBuilt = false
     /// Off when place names are turned off in settings; names already looked up stay cached but hidden.
     var usesPlaceNames = true
@@ -126,17 +128,35 @@ final class Journal {
     /// Regroups the whole library off the main thread.
     func rebuild() async {
         let built = await Task.detached(priority: .utility) {
-            JournalBuilder.entries(from: Self.loadPoints())
+            let points = Self.loadPoints()
+            return (JournalBuilder.entries(from: points), PlaceGrouping.places(from: points))
         }.value
-        entries = built
+        entries = built.0
+        places = built.1
         isBuilt = true
+    }
+
+    func place(id: String) -> Place? {
+        places.first { $0.id == id }
+    }
+
+    /// The place's name once Apple Maps has given one (and place names are on in settings).
+    func name(for place: Place) -> String? {
+        guard usesPlaceNames else { return nil }
+        return placeNames[Self.placeKey(place.center)]
+    }
+
+    /// The name, or the month of the latest visit while it has none.
+    func title(for place: Place) -> String {
+        (name(for: place) ?? place.latest.formatted(.dateTime.month(.wide).year())).lowercased()
     }
 
     /// Names the places of entries away from home, newest first. Apple throttles these lookups, so they go one at a
     /// time and every name is kept, keyed by a ~5 km cell, so each place is only asked about once.
     func lookUpPlaces() async {
-        for entry in entries where entry.isAway {
-            guard let center = entry.center else { continue }
+        // Trips first, then every place on the places page, the most recent first.
+        let centers = entries.filter(\.isAway).compactMap(\.center) + places.map(\.center)
+        for center in centers {
             let key = Self.placeKey(center)
             guard placeNames[key] == nil, !failedPlaces.contains(key) else { continue }
             guard !Task.isCancelled else { return }

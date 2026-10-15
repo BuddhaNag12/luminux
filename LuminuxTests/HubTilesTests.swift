@@ -7,10 +7,10 @@ struct HubTilesTests {
         FileManager.default.temporaryDirectory.appendingPathComponent("hub-\(UUID().uuidString).json")
     }
 
-    @Test func startsWithTheFourBuiltInTiles() {
+    @Test func startsWithTheBuiltInTiles() {
         let tiles = HubTiles(storeURL: nil)
 
-        #expect(tiles.tiles.map(\.kind) == [.cameraRoll, .albums, .date, .favorites])
+        #expect(tiles.tiles.map(\.kind) == [.cameraRoll, .albums, .date, .favorites, .places])
         #expect(tiles.tiles.allSatisfy { $0.size == .medium })
         #expect(tiles.pinCount == 0)
     }
@@ -63,10 +63,10 @@ struct HubTilesTests {
     @Test func movingATileTakesTheTargetsPlace() {
         let tiles = HubTiles(storeURL: nil)
         tiles.move(.favorites, to: 0)
-        #expect(tiles.tiles.map(\.kind) == [.favorites, .cameraRoll, .albums, .date])
+        #expect(tiles.tiles.map(\.kind) == [.favorites, .cameraRoll, .albums, .date, .places])
 
         tiles.move(.favorites, to: 3)
-        #expect(tiles.tiles.map(\.kind) == [.cameraRoll, .albums, .date, .favorites])
+        #expect(tiles.tiles.map(\.kind) == [.cameraRoll, .albums, .date, .favorites, .places])
     }
 
     @Test func resizeStepsMediumSmallWide() {

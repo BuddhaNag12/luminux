@@ -32,6 +32,8 @@ struct HubView: View {
     @State private var tilt = PhoneTilt()
     @State private var isEditingTiles = false
     @State private var selectedTile: HubTileKind?
+    /// The collection panel is the one on screen; its live tiles stop while another panel is.
+    @State private var isOnCollection = true
 
     /// Motion runs only while the hub is on screen.
     private var tracksTilt: Bool {
@@ -48,6 +50,7 @@ struct HubView: View {
 
     var body: some View {
         Panorama("photos", leadingTitle: showsNews ? "news" : nil, startPanel: showsNews ? 1 : 0, onPanelChange: { panel in
+            isOnCollection = panel == (showsNews ? 1 : 0)
             if showsNews && panel == 0 { Task { await prepareNews() } }
             endEditing()
         }) {
@@ -84,7 +87,7 @@ struct HubView: View {
         }
         .onDisappear { tilt.stop() }
         // Live tiles only take turns while the hub is what's on screen.
-        .onChange(of: tracksHub, initial: true) { _, shown in LiveTileScheduler.shared.isPaused = !shown }
+        .onChange(of: tracksHub && isOnCollection, initial: true) { _, shown in LiveTileScheduler.shared.isPaused = !shown }
         .task(id: store.isUnlocked) {
             // Picks up the remote switch quietly; ads wait until the panel is actually shown.
             guard !store.isUnlocked else { return ads.clear() }

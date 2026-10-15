@@ -202,7 +202,8 @@ struct HubTileGrid: View {
         case .cameraRoll: navigator.push(.collection(page: 0))
         case .albums: navigator.push(.collection(page: 1))
         case .date: navigator.push(.collection(page: 0, showsJumpList: true))
-        case .favorites: navigator.push(.collection(page: 2))
+        case .favorites: navigator.push(.collection(page: CollectionView.favoritesPage))
+        case .places: navigator.push(.collection(page: CollectionView.placesPage))
         case .album(let id): navigator.push(.album(id))
         case .photoSet(let id): navigator.push(.photoSet(id))
         }
@@ -240,6 +241,7 @@ struct HubTileFace: View {
 
     @Environment(PhotoLibrary.self) private var library
     @Environment(HubTiles.self) private var hubTiles
+    @Environment(Journal.self) private var journal
     @Environment(\.metro) private var metro
     @Environment(\.displayScale) private var displayScale
 
@@ -255,6 +257,7 @@ struct HubTileFace: View {
         case .albums: "albums"
         case .date: "date"
         case .favorites: "favorites"
+        case .places: "places"
         case .album(let id): library.album(id: id)?.title ?? "album"
         case .photoSet(let id): hubTiles.photoSet(id: id)?.title ?? "photos"
         }
@@ -271,6 +274,10 @@ struct HubTileFace: View {
             metro.accentColor.overlay(alignment: .topLeading) { dateFace }
         case .favorites:
             photos(library.favorites.items(limit: 8), style: .slide, fallback: "heart")
+        case .places:
+            // The newest photo from each of the most recent places.
+            let covers = journal.places.prefix(8).compactMap { $0.photoIDs.first.flatMap(library.asset(id:)) }
+            photos(covers.map(AssetItem.init), style: .slide, fallback: "map")
         case .album(let id):
             photos(library.assets(in: .album(id)).items(limit: 8), style: .flip, fallback: "rectangle.stack")
         case .photoSet(let id):

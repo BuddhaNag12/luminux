@@ -1,7 +1,7 @@
 import Photos
 import SwiftUI
 
-/// Pivot over the whole library: all (by month), albums, favorites, videos.
+/// Pivot over the whole library: all (by month), albums, places, favorites, videos.
 struct CollectionView: View {
     @State var page: Int
     @State var showsJumpList: Bool
@@ -18,7 +18,9 @@ struct CollectionView: View {
     @State private var newAlbumName = ""
     @State private var pinRequest: PinRequest?
 
-    private static let albumsPage = 1
+    static let albumsPage = 1
+    static let placesPage = 2
+    static let favoritesPage = 3
 
     init(page: Int, showsJumpList: Bool = false) {
         _page = State(initialValue: page)
@@ -39,6 +41,8 @@ struct CollectionView: View {
                 .pivotTitle("all")
 
                 AlbumsGrid().pivotTitle("albums")
+
+                PlacesPage().pivotTitle("places")
 
                 AssetGrid(
                     source: .favorites,
@@ -65,7 +69,7 @@ struct CollectionView: View {
         }
         .animation(MetroMotion.standard, value: showsJumpList)
         .onChange(of: page) { _, newPage in
-            if newPage == Self.albumsPage { selection.end() }
+            if newPage == Self.albumsPage || newPage == Self.placesPage { selection.end() }
         }
         .assetActionSheets(share: $share, addToAlbum: $addToAlbum)
         .hubPinning($pinRequest)
@@ -93,6 +97,7 @@ struct CollectionView: View {
         if page == Self.albumsPage {
             return [AppBarButton(title: "new album", systemImage: "plus") { isNamingAlbum = true }]
         }
+        if page == Self.placesPage { return [] }
         return [AppBarButton(title: "select", systemImage: "checklist") { selection.begin() }]
     }
 

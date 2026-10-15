@@ -115,6 +115,8 @@ private struct AppShell: View {
                 JournalEntryView(entryID: id)
             case .photoSet(let id):
                 PhotoSetView(setID: id)
+            case .place(let id):
+                PlaceView(placeID: id)
             }
         }
         .environment(\.zoomNamespace, zoom)

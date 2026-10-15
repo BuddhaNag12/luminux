@@ -4,7 +4,7 @@ import Observation
 
 /// What a tile on the hub's collection panel shows and opens.
 nonisolated enum HubTileKind: Codable, Hashable, Sendable {
-    case cameraRoll, albums, date, favorites
+    case cameraRoll, albums, date, favorites, places
     case album(String)
     /// Photos picked in select mode and pinned together.
     case photoSet(String)
@@ -12,7 +12,7 @@ nonisolated enum HubTileKind: Codable, Hashable, Sendable {
     /// The four tiles the hub ships with; they can be moved and resized but not unpinned.
     var isBuiltIn: Bool {
         switch self {
-        case .cameraRoll, .albums, .date, .favorites: true
+        case .cameraRoll, .albums, .date, .favorites, .places: true
         case .album, .photoSet: false
         }
     }
@@ -65,6 +65,7 @@ final class HubTiles {
 
     static let defaultTiles: [HubTile] = [
         HubTile(kind: .cameraRoll), HubTile(kind: .albums), HubTile(kind: .date), HubTile(kind: .favorites),
+        HubTile(kind: .places),
     ]
 
     private(set) var tiles: [HubTile] = HubTiles.defaultTiles
