@@ -109,8 +109,6 @@ struct OnboardingPage: Identifiable {
     let visual: Visual
     let title: String
     let body: String
-    /// What needs Pro on this page, if anything.
-    var pro: String?
     /// Added to the body while photo access hasn't been given yet.
     var accessNote: String?
 
@@ -121,16 +119,9 @@ struct OnboardingPage: Identifiable {
             body: "A tile-based home for the photos and videos already on your iPhone."
         ),
         OnboardingPage(
-            id: "browse", visual: .glyph("square.stack.3d.up"),
-            title: "browse your way",
-            body: "Pin albums to a hub of live tiles, pinch the grid for bigger or smaller photos, and relive your days and trips in the journal.",
-            pro: "Two pins are free; Pro pins as many as you like."
-        ),
-        OnboardingPage(
-            id: "create", visual: .glyph("slider.horizontal.3"),
-            title: "make it yours",
-            body: "Edit with crop, light, colour and one-tap looks, lift a person or pet out of a photo, and put any collection on your Home Screen as a widget.",
-            pro: "Editing and lifting come with Pro, or watch a short ad to use them once. The small widget is free."
+            id: "features", visual: .glyph("square.stack.3d.up"),
+            title: "browse, relive, make it yours",
+            body: "A hub of live tiles, a grid you pinch to zoom, and a journal of your days and trips. Edit with light, colour and looks, lift a person or pet out of a photo, and put any album on your Home Screen as a widget."
         ),
         OnboardingPage(
             id: "privacy", visual: .glyph("lock"),
@@ -168,23 +159,6 @@ private struct OnboardingPageView: View {
                     .font(.metroBody)
                     .foregroundStyle(metro.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                if let pro = page.pro {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("PRO")
-                            .font(.metroOverline)
-                            .tracking(1.2)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(metro.accentColor)
-                        Text(pro)
-                            .font(.metroCaption)
-                            .foregroundStyle(metro.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.top, 4)
-                    .accessibilityElement(children: .combine)
-                }
             }
             .offset(x: showsText || reduceMotion ? 0 : 24)
             .opacity(showsText || reduceMotion ? 1 : 0)
