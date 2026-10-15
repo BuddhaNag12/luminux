@@ -23,8 +23,6 @@ struct HubTileGrid: View {
         /// Where the finger holds the tile, from its top-left corner.
         let grab: CGSize
         var location: CGPoint
-        /// The tile it last swapped with, so the reflow after a swap doesn't swap them straight back.
-        var lastTarget: HubTileKind?
     }
 
     private let spacing = MetroMetrics.gutter
@@ -149,14 +147,14 @@ struct HubTileGrid: View {
             ignoresTap = true
             pickups += 1
         case .changed:
-            guard var current = drag else { return }
+            guard var current = drag, let from = tiles.firstIndex(where: { $0.kind == current.kind }) else { return }
             current.location = location
-            let target = frames.firstIndex { $0.contains(location) }.map { tiles[$0].kind }
-            if let target, target != current.kind, target != current.lastTarget,
-               let index = tiles.firstIndex(where: { $0.kind == target }) {
+            // Where the held tile is now, not just the finger: a big tile is often held near one edge.
+            let held = CGRect(origin: CGPoint(x: location.x - current.grab.width, y: location.y - current.grab.height), size: frames[from].size)
+            let index = TilePacking.dropIndex(for: held, sizes: tiles.map(\.size), moving: from, width: width, spacing: spacing)
+            if index != from {
                 withAnimation(MetroMotion.standard) { hubTiles.move(current.kind, to: index) }
             }
-            current.lastTarget = target
             drag = current
         case .ended:
             // The buttons' tap lands about now, if at all.

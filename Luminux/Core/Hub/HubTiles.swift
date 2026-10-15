@@ -221,6 +221,25 @@ nonisolated enum TilePacking {
         max((width - spacing * CGFloat(columns - 1)) / CGFloat(columns), 0)
     }
 
+    /// Where a dragged tile should go: the position whose packed slot sits closest to where the tile is held. Every
+    /// candidate is judged after the reflow it would cause, and the tile only leaves its current slot for one that's
+    /// clearly closer, so it can't flip back and forth while the other tiles move underneath it.
+    static func dropIndex(for held: CGRect, sizes: [HubTileSize], moving: Int, width: CGFloat, spacing: CGFloat) -> Int {
+        guard sizes.indices.contains(moving) else { return moving }
+        func distance(at index: Int) -> CGFloat {
+            var order = sizes
+            let size = order.remove(at: moving)
+            order.insert(size, at: index)
+            let slot = frame(for: place(order)[index], width: width, spacing: spacing)
+            return hypot(slot.midX - held.midX, slot.midY - held.midY)
+        }
+        let current = distance(at: moving)
+        let best = sizes.indices.map { (index: $0, distance: distance(at: $0)) }.min { $0.distance < $1.distance }!
+        // A quarter of a cell closer before it moves.
+        let margin = cellSide(width: width, spacing: spacing) / 4
+        return best.distance < current - margin ? best.index : moving
+    }
+
     static func frame(for placement: TilePlacement, width: CGFloat, spacing: CGFloat) -> CGRect {
         let side = cellSide(width: width, spacing: spacing)
         let step = side + spacing

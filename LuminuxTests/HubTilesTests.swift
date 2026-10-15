@@ -157,4 +157,40 @@ struct TilePackingTests {
 
         #expect(frame == CGRect(x: 208, y: 0, width: 204, height: 204))
     }
+
+    // The default hub on a 400 pt wide grid with no gaps (100 pt cells): favorites and camera roll side by side on
+    // top (rows 0-1), the wide date tile below (rows 2-3), then albums and a pinned set.
+    private let sizes: [HubTileSize] = [.medium, .medium, .wide, .medium, .medium]
+    private func drop(_ held: CGRect, moving: Int) -> Int {
+        TilePacking.dropIndex(for: held, sizes: sizes, moving: moving, width: 400, spacing: 0)
+    }
+
+    @Test func aBigTileLandsWhereItIsHeld() {
+        // The wide tile dragged up over the top row.
+        #expect(drop(CGRect(x: 0, y: 40, width: 400, height: 200), moving: 2) == 0)
+    }
+
+    @Test func aSlowDragMovesOnceAndDoesNotFlipBack() {
+        // Favorites dragged down 10 pt at a time until it's below the wide tile, moving whenever the rule says so.
+        var order = sizes
+        var moving = 0
+        var moves = 0
+        for y in stride(from: 0, through: 300, by: 10) {
+            let index = TilePacking.dropIndex(for: CGRect(x: 0, y: CGFloat(y), width: 200, height: 200), sizes: order, moving: moving, width: 400, spacing: 0)
+            if index != moving {
+                let size = order.remove(at: moving)
+                order.insert(size, at: index)
+                moving = index
+                moves += 1
+            }
+        }
+        #expect(moves == 1)
+        // It ends up under the wide tile, on the left.
+        let slot = TilePacking.frame(for: TilePacking.place(order)[moving], width: 400, spacing: 0)
+        #expect(slot.origin == CGPoint(x: 0, y: 400))
+    }
+
+    @Test func aSmallNudgeLeavesTheOrderAlone() {
+        #expect(drop(CGRect(x: 10, y: 10, width: 200, height: 200), moving: 0) == 0)
+    }
 }
