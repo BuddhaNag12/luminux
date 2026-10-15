@@ -167,7 +167,6 @@ struct PhotosLiveTile: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "PhotosLiveTile", intent: TileConfigurationIntent.self, provider: TileProvider()) { entry in
             TileView(entry: entry)
-                .containerBackground(for: .widget) { Color(hex: entry.accentHex) }
         }
         .configurationDisplayName("Photos")
         .description("A live tile of your recent photos, favorites or a collection from Luminux.")
@@ -183,13 +182,22 @@ struct TileView: View {
     /// The medium and large tiles come with Luminux Pro; the small one is free.
     private var isLocked: Bool { family != .systemSmall && !entry.isPro }
 
+    /// Photos sit on near-black, so the gaps between them read as a dark frame rather than lines of accent colour;
+    /// the accent stays behind the lock and empty faces.
+    private var showsPhotos: Bool { !isLocked && !entry.needsCollection && !entry.imageURLs.isEmpty }
+
     var body: some View {
-        if isLocked {
-            lockedFace.widgetURL(URL(string: "luminux://pro"))
-        } else {
-            tile.widgetURL(entry.url)
+        Group {
+            if isLocked {
+                lockedFace.widgetURL(URL(string: "luminux://pro"))
+            } else {
+                tile.widgetURL(entry.url)
+            }
         }
+        .containerBackground(for: .widget) { showsPhotos ? Color(hex: 0x0B0B0B) : Color(hex: entry.accentHex) }
     }
+
+    private static let gutter: CGFloat = 3
 
     private var lockedFace: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -234,15 +242,15 @@ struct TileView: View {
     private var collage: some View {
         switch family {
         case .systemMedium:
-            HStack(spacing: 4) {
+            HStack(spacing: Self.gutter) {
                 photo(0)
-                VStack(spacing: 4) {
+                VStack(spacing: Self.gutter) {
                     photo(1)
                     photo(2)
                 }
             }
         case .systemLarge, .systemExtraLarge:
-            Grid(horizontalSpacing: 4, verticalSpacing: 4) {
+            Grid(horizontalSpacing: Self.gutter, verticalSpacing: Self.gutter) {
                 GridRow {
                     photo(0)
                     photo(1)
