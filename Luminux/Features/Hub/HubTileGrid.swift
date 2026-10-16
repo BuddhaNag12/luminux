@@ -269,9 +269,9 @@ struct HubTileFace: View {
         case .cameraRoll:
             photos(library.allAssets.items(limit: 8), style: .flip, fallback: "photo.on.rectangle")
         case .albums:
-            glyph("rectangle.stack")
+            AmbientTile(pattern: .albums)
         case .date:
-            metro.accentColor.overlay(alignment: .topLeading) { dateFace }
+            AmbientTile(pattern: .date).overlay(alignment: .topLeading) { dateFace }
         case .favorites:
             photos(library.favorites.items(limit: 8), style: .slide, fallback: "heart")
         case .places:

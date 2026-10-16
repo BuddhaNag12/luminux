@@ -80,6 +80,16 @@ struct SettingsView: View {
                         .metroFeather(row: 9)
                         .padding(.top, 14)
                 }
+                toggleRow("live tiles",
+                          caption: "Photo tiles flip to a new picture every few seconds. Off, they change each time you come back to the hub.",
+                          isOn: $settings.animatesLiveTiles)
+                    .metroFeather(row: 9)
+                    .padding(.top, 20)
+                toggleRow("tile patterns",
+                          caption: "The albums and date tiles move slowly.",
+                          isOn: $settings.animatesTilePatterns)
+                    .metroFeather(row: 9)
+                    .padding(.top, 20)
 
                 section("photos")
                     .metroFeather(row: 10)

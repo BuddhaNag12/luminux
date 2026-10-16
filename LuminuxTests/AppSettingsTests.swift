@@ -20,6 +20,18 @@ struct AppSettingsTests {
         #expect(settings.gridColumns == 4)
         #expect(settings.movesWithPhone)
         #expect(settings.tiltStrength == .medium)
+        #expect(settings.animatesLiveTiles)
+        #expect(settings.animatesTilePatterns)
+    }
+
+    @Test func tileAnimationSwitchesAreKept() {
+        let defaults = freshDefaults()
+        let settings = AppSettings(defaults: defaults)
+        settings.animatesLiveTiles = false
+        settings.animatesTilePatterns = false
+        let reloaded = AppSettings(defaults: defaults)
+        #expect(!reloaded.animatesLiveTiles)
+        #expect(!reloaded.animatesTilePatterns)
     }
 
     @Test func persistsChanges() {

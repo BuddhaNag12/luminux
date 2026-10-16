@@ -32,6 +32,10 @@ struct LiveTile<Item: Identifiable, Face: View>: View {
         .onChange(of: scheduler.turn) { _, turn in
             if turn?.tile == id { advance() }
         }
+        // With live tiles off, each tile shows one picture and moves to the next whenever the hub comes back.
+        .onChange(of: scheduler.returns) {
+            if !scheduler.isAnimated, items.count > 1 { index = (index + 1) % items.count }
+        }
     }
 
     private var transition: AnyTransition {
@@ -71,8 +75,18 @@ final class LiveTileScheduler {
     private(set) var turn: Turn?
     /// Set while something covers the tiles (another page, the viewer, the app in the background).
     var isPaused = false {
-        didSet { if isPaused != oldValue { restart() } }
+        didSet {
+            guard isPaused != oldValue else { return }
+            if !isPaused { returns += 1 }
+            restart()
+        }
     }
+    /// Off in settings: no turns at all.
+    var isAnimated = true {
+        didSet { if isAnimated != oldValue { restart() } }
+    }
+    /// Counts each time the tiles come back into view.
+    private(set) var returns = 0
 
     @ObservationIgnored private var tiles: Set<UUID> = []
     @ObservationIgnored private var loop: Task<Void, Never>?
@@ -93,7 +107,7 @@ final class LiveTileScheduler {
     private func restart() {
         loop?.cancel()
         loop = nil
-        guard !isPaused else { return }
+        guard !isPaused, isAnimated else { return }
         loop = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(Double.random(in: Self.interval)))

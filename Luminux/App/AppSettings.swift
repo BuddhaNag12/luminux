@@ -11,6 +11,8 @@ final class AppSettings {
         static let playsLivingImages = "playsLivingImages"
         static let gridColumns = "gridColumns"
         static let movesWithPhone = "movesWithPhone"
+        static let animatesLiveTiles = "animatesLiveTiles"
+        static let animatesTilePatterns = "animatesTilePatterns"
         static let namesJournalPlaces = "namesJournalPlaces"
         static let tiltStrength = "tiltStrength"
         static let hasSeenOnboarding = "hasSeenOnboarding"
@@ -37,6 +39,17 @@ final class AppSettings {
     /// Photos per row in the grids; pinching steps through `GridZoom.levels`.
     var gridColumns: Int {
         didSet { defaults.set(gridColumns, forKey: Key.gridColumns) }
+    }
+
+    /// Photo tiles flip to a new picture every few seconds; off, each shows one picture and changes it each time the
+    /// hub comes back into view.
+    var animatesLiveTiles: Bool {
+        didSet { defaults.set(animatesLiveTiles, forKey: Key.animatesLiveTiles) }
+    }
+
+    /// The albums and date tiles' slow abstract patterns.
+    var animatesTilePatterns: Bool {
+        didSet { defaults.set(animatesTilePatterns, forKey: Key.animatesTilePatterns) }
     }
 
     var movesWithPhone: Bool {
@@ -67,6 +80,8 @@ final class AppSettings {
         playsLivingImages = defaults.object(forKey: Key.playsLivingImages) as? Bool ?? true
         gridColumns = GridZoom.nearestLevel(to: defaults.object(forKey: Key.gridColumns) as? Int ?? GridZoom.defaultColumns)
         movesWithPhone = defaults.object(forKey: Key.movesWithPhone) as? Bool ?? true
+        animatesLiveTiles = defaults.object(forKey: Key.animatesLiveTiles) as? Bool ?? true
+        animatesTilePatterns = defaults.object(forKey: Key.animatesTilePatterns) as? Bool ?? true
         namesJournalPlaces = defaults.object(forKey: Key.namesJournalPlaces) as? Bool ?? true
         tiltStrength = defaults.string(forKey: Key.tiltStrength).flatMap(TiltStrength.init) ?? .medium
         hasSeenOnboarding = defaults.bool(forKey: Key.hasSeenOnboarding)

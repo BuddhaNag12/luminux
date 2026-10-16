@@ -88,6 +88,7 @@ struct HubView: View {
         .onDisappear { tilt.stop() }
         // Live tiles only take turns while the hub is what's on screen.
         .onChange(of: tracksHub && isOnCollection, initial: true) { _, shown in LiveTileScheduler.shared.isPaused = !shown }
+        .onChange(of: settings.animatesLiveTiles, initial: true) { _, animated in LiveTileScheduler.shared.isAnimated = animated }
         .task(id: store.isUnlocked) {
             // Picks up the remote switch quietly; ads wait until the panel is actually shown.
             guard !store.isUnlocked else { return ads.clear() }
