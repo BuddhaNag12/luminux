@@ -7,121 +7,27 @@ struct SettingsView: View {
     @Environment(AdConsent.self) private var adConsent
     @Environment(\.metro) private var metro
     @State private var showsTour = false
+    @State private var showsBackgroundPicker = false
+    @Environment(PhotoLibrary.self) private var library
+    @Environment(HubTiles.self) private var hubTiles
 
     /// The six presets and the custom colour fit one row.
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: Accent.presets.count + 1)
 
+    @State private var page = 0
+
+    /// Three short pivot pages instead of one long list: how it behaves, how it looks, and the rest.
     var body: some View {
-        @Bindable var settings = settings
-
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("LUMINUX").font(.metroOverline).tracking(1.5)
-                    .metroFeather(row: 0)
-                Text("settings")
-                    .font(.metroTitle)
-                    .padding(.leading, -3)
-                    .metroFeather(row: 0)
-                    .padding(.bottom, 20)
-
-                proCard
-                    .metroFeather(row: 1)
-
-                section("appearance")
-                    .metroFeather(row: 2)
-                Segments(label: "background", options: MetroTheme.allCases, selection: $settings.theme)
-                    .metroFeather(row: 3)
-                    .padding(.bottom, 20)
-
-                HStack(alignment: .firstTextBaseline) {
-                    Text("accent colour").font(.metroBody)
-                    Spacer()
-                    Text(settings.accent.name).font(.metroCaption).foregroundStyle(metro.secondary)
-                }
-                .metroFeather(row: 4)
-                .padding(.bottom, 10)
-                LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(Array(Accent.presets.enumerated()), id: \.element) { index, accent in
-                        Button {
-                            withAnimation(MetroMotion.fade) { settings.accent = accent }
-                        } label: {
-                            accent.color
-                                .aspectRatio(1, contentMode: .fit)
-                                .overlay {
-                                    if settings.accent == accent {
-                                        Rectangle().strokeBorder(metro.foreground, lineWidth: 3)
-                                        Image(systemName: "checkmark")
-                                            .font(.system(size: 15, weight: .semibold))
-                                            .foregroundStyle(.white)
-                                    }
-                                }
-                        }
-                        .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
-                        .metroFeather(row: 5, column: index)
-                        .accessibilityLabel(accent.name)
-                        .accessibilityAddTraits(settings.accent == accent ? .isSelected : [])
-                    }
-
-                    customAccentTile
-                        .metroFeather(row: 5, column: Accent.presets.count)
-                }
-
-                section("hub")
-                    .metroFeather(row: 6)
-                toggleRow("background photo", isOn: $settings.showsHubBackground)
-                    .metroFeather(row: 7)
-                    .padding(.bottom, 20)
-                toggleRow("motion effect",
-                          caption: "Tiles and the background shift as you tilt the phone. Off with Reduce Motion.",
-                          isOn: $settings.movesWithPhone)
-                    .metroFeather(row: 8)
-                if settings.movesWithPhone {
-                    Segments(label: "movement", options: TiltStrength.allCases, selection: $settings.tiltStrength)
-                        .metroFeather(row: 9)
-                        .padding(.top, 14)
-                }
-                toggleRow("live tiles",
-                          caption: "Photo tiles flip to a new picture every few seconds. Off, they change each time you come back to the hub.",
-                          isOn: $settings.animatesLiveTiles)
-                    .metroFeather(row: 9)
-                    .padding(.top, 20)
-                toggleRow("tile patterns",
-                          caption: "The albums and date tiles move slowly.",
-                          isOn: $settings.animatesTilePatterns)
-                    .metroFeather(row: 9)
-                    .padding(.top, 20)
-
-                section("photos")
-                    .metroFeather(row: 10)
-                toggleRow("live photos",
-                          caption: "Play their motion once when you open one.",
-                          isOn: $settings.playsLivingImages)
-                    .metroFeather(row: 11)
-                    .padding(.bottom, 20)
-                toggleRow("place names",
-                          caption: "Titles journal trips like \"trip to goa\" using Apple Maps. Only locations are sent, never photos.",
-                          isOn: $settings.namesJournalPlaces)
-                    .metroFeather(row: 12)
-
-                section("more")
-                    .metroFeather(row: 13)
-                VStack(alignment: .leading, spacing: 18) {
-                    if adConsent.needsPrivacyOptions && !store.isUnlocked {
-                        link("ad privacy choices", detail: "What Google may use to pick ads") {
-                            Task { await adConsent.presentPrivacyOptions() }
-                        }
-                    }
-                    link("take the tour", detail: "What Luminux can do, page by page") { showsTour = true }
-                    link("about and licences", detail: "Version, fonts and their licences") { navigator.push(.about) }
-                }
-                .metroFeather(row: 14)
-            }
-            .padding(.horizontal, MetroMetrics.margin + 12)
-            .padding(.top, 16)
-            .padding(.bottom, 40)
+        Pivot(overline: "LUMINUX · SETTINGS", selection: $page) {
+            settingsPage { generalPage }.pivotTitle("general")
+            settingsPage { lookPage }.pivotTitle("look")
+            settingsPage { aboutPage }.pivotTitle("about")
         }
         .foregroundStyle(metro.foreground)
         .background(metro.background)
+        .sheet(isPresented: $showsBackgroundPicker) {
+            BackgroundPicker().environment(\.metro, metro)
+        }
         .fullScreenCover(isPresented: $showsTour) {
             OnboardingView(isReplay: true) { showsTour = false }
         }
@@ -129,6 +35,132 @@ struct SettingsView: View {
             await store.refresh()
             if !store.isUnlocked { await adConsent.refreshPrivacyOptions() }
         }
+    }
+
+    private func settingsPage<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) { content() }
+                .padding(.horizontal, MetroMetrics.margin + 12)
+                .padding(.top, 24)
+                .padding(.bottom, 40)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    @ViewBuilder private var lookPage: some View {
+        @Bindable var settings = settings
+        Text("theme").font(.metroBody)
+            .metroFeather(row: 1)
+            .padding(.bottom, 10)
+        Segments(label: "theme", options: MetroTheme.allCases, selection: $settings.theme)
+            .metroFeather(row: 1)
+            .padding(.bottom, 24)
+
+        HStack(alignment: .firstTextBaseline) {
+            Text("accent colour").font(.metroBody)
+            Spacer()
+            Text(settings.accent.name).font(.metroCaption).foregroundStyle(metro.secondary)
+        }
+        .metroFeather(row: 2)
+        .padding(.bottom, 10)
+        LazyVGrid(columns: columns, spacing: 6) {
+            ForEach(Array(Accent.presets.enumerated()), id: \.element) { index, accent in
+                Button {
+                    withAnimation(MetroMotion.fade) { settings.accent = accent }
+                } label: {
+                    accent.color
+                        .aspectRatio(1, contentMode: .fit)
+                        .overlay {
+                            if settings.accent == accent {
+                                Rectangle().strokeBorder(metro.foreground, lineWidth: 3)
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                }
+                .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
+                .metroFeather(row: 3, column: index)
+                .accessibilityLabel(accent.name)
+                .accessibilityAddTraits(settings.accent == accent ? .isSelected : [])
+            }
+
+            customAccentTile
+                .metroFeather(row: 3, column: Accent.presets.count)
+        }
+        .padding(.bottom, 28)
+
+        toggleRow("background photo", caption: "A photo behind the hub, picked each time Luminux opens.", isOn: $settings.showsHubBackground)
+            .metroFeather(row: 4)
+        if settings.showsHubBackground {
+            link("background from", detail: BackgroundPicker.name(for: BackgroundPicker.current(settings, store: store), library: library, hubTiles: hubTiles)) {
+                showsBackgroundPicker = true
+            }
+            .metroFeather(row: 5)
+            .padding(.top, 20)
+        }
+    }
+
+    @ViewBuilder private var generalPage: some View {
+        @Bindable var settings = settings
+        toggleRow("motion effect",
+                  caption: "Tiles and the background shift as you tilt the phone. Off with Reduce Motion.",
+                  isOn: $settings.movesWithPhone)
+            .metroFeather(row: 1)
+        if settings.movesWithPhone {
+            Segments(label: "movement", options: TiltStrength.allCases, selection: $settings.tiltStrength)
+                .metroFeather(row: 2)
+                .padding(.top, 14)
+        }
+        toggleRow("live tiles",
+                  caption: "Photo tiles flip to a new picture every few seconds. Off, they change each time you come back to the hub.",
+                  isOn: $settings.animatesLiveTiles)
+            .metroFeather(row: 3)
+            .padding(.top, 32)
+        toggleRow("tile patterns",
+                  caption: "The albums and date tiles move slowly.",
+                  isOn: $settings.animatesTilePatterns)
+            .metroFeather(row: 4)
+            .padding(.top, 32)
+        Group {
+            if store.unlocksPro {
+                toggleRow("standby",
+                          caption: "With the phone charging on its side, the small Photos widget shows three photos and today's date.",
+                          isOn: $settings.showsStandBy)
+            } else {
+                link("standby", detail: "Photo tiles and the date on the small widget in StandBy. Comes with Luminux Pro.") {
+                    navigator.push(.pro)
+                }
+            }
+        }
+            .metroFeather(row: 5)
+            .padding(.top, 32)
+        toggleRow("live photos",
+                  caption: "Play their motion once when you open one.",
+                  isOn: $settings.playsLivingImages)
+            .metroFeather(row: 6)
+            .padding(.top, 32)
+        toggleRow("place names",
+                  caption: "Titles journal trips like \"trip to goa\" and names places using Apple Maps. Only locations are sent, never photos.",
+                  isOn: $settings.namesJournalPlaces)
+            .metroFeather(row: 7)
+            .padding(.top, 32)
+    }
+
+    @ViewBuilder private var aboutPage: some View {
+        proCard
+            .metroFeather(row: 1)
+            .padding(.bottom, 28)
+        VStack(alignment: .leading, spacing: 18) {
+            if adConsent.needsPrivacyOptions && !store.isUnlocked {
+                link("ad privacy choices", detail: "What Google may use to pick ads") {
+                    Task { await adConsent.presentPrivacyOptions() }
+                }
+            }
+            link("take the tour", detail: "What Luminux can do, page by page") { showsTour = true }
+            link("about and licences", detail: "Version, fonts and their licences") { navigator.push(.about) }
+        }
+        .metroFeather(row: 2)
     }
 
     /// An accent tile that opens the Pro page, or a quiet thank-you once it's bought.
@@ -211,16 +243,6 @@ struct SettingsView: View {
         .accessibilityLabel(isLocked ? "Custom colour, needs Luminux Pro" : "Custom colour")
         .accessibilityValue(isCustom ? settings.accent.name : "")
         .accessibilityAddTraits(isCustom ? .isSelected : [])
-    }
-
-    private func section(_ text: String) -> some View {
-        Text(text)
-            .font(.metro(22, .semilight))
-            // Not the accent: cobalt and other dark accents are too dim for text on black.
-            .foregroundStyle(metro.secondary)
-            .padding(.top, 36)
-            .padding(.bottom, 14)
-            .accessibilityAddTraits(.isHeader)
     }
 
     private func toggleRow(_ title: String, caption: String? = nil, isOn: Binding<Bool>) -> some View {

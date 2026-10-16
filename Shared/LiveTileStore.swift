@@ -95,4 +95,10 @@ nonisolated enum LiveTileStore {
     }
 
     static var unlocksWideTiles: Bool { isPro || isTestBuild }
+
+    /// The "standby" switch in settings: the small tile's photos-and-date face in StandBy.
+    static var showsStandBy: Bool {
+        get { defaults?.object(forKey: "showsStandBy") as? Bool ?? true }
+        set { defaults?.set(newValue, forKey: "showsStandBy") }
+    }
 }

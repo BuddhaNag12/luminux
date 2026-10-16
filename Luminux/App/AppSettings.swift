@@ -13,6 +13,8 @@ final class AppSettings {
         static let movesWithPhone = "movesWithPhone"
         static let animatesLiveTiles = "animatesLiveTiles"
         static let animatesTilePatterns = "animatesTilePatterns"
+        static let hubBackground = "hubBackground"
+        static let showsStandBy = "showsStandBy"
         static let namesJournalPlaces = "namesJournalPlaces"
         static let tiltStrength = "tiltStrength"
         static let hasSeenOnboarding = "hasSeenOnboarding"
@@ -52,6 +54,16 @@ final class AppSettings {
         didSet { defaults.set(animatesTilePatterns, forKey: Key.animatesTilePatterns) }
     }
 
+    /// Where the hub's background photo is picked from, once per launch.
+    var hubBackground: HubBackgroundSource {
+        didSet { defaults.set(try? JSONEncoder().encode(hubBackground), forKey: Key.hubBackground) }
+    }
+
+    /// The small widget's StandBy face: photo tiles and today's date. Pro; the app copies it to the widget.
+    var showsStandBy: Bool {
+        didSet { defaults.set(showsStandBy, forKey: Key.showsStandBy) }
+    }
+
     var movesWithPhone: Bool {
         didSet { defaults.set(movesWithPhone, forKey: Key.movesWithPhone) }
     }
@@ -82,6 +94,8 @@ final class AppSettings {
         movesWithPhone = defaults.object(forKey: Key.movesWithPhone) as? Bool ?? true
         animatesLiveTiles = defaults.object(forKey: Key.animatesLiveTiles) as? Bool ?? true
         animatesTilePatterns = defaults.object(forKey: Key.animatesTilePatterns) as? Bool ?? true
+        hubBackground = defaults.data(forKey: Key.hubBackground).flatMap { try? JSONDecoder().decode(HubBackgroundSource.self, from: $0) } ?? .favorites
+        showsStandBy = defaults.object(forKey: Key.showsStandBy) as? Bool ?? true
         namesJournalPlaces = defaults.object(forKey: Key.namesJournalPlaces) as? Bool ?? true
         tiltStrength = defaults.string(forKey: Key.tiltStrength).flatMap(TiltStrength.init) ?? .medium
         hasSeenOnboarding = defaults.bool(forKey: Key.hasSeenOnboarding)
@@ -101,4 +115,14 @@ nonisolated enum TiltStrength: String, CaseIterable, Identifiable, Sendable {
         case .high: 1
         }
     }
+}
+
+/// The photos the hub's background is picked from.
+nonisolated enum HubBackgroundSource: Codable, Hashable, Sendable {
+    case favorites
+    case everything
+    case album(String)
+    case photoSet(String)
+    /// Photos picked one by one in settings.
+    case photos([String])
 }

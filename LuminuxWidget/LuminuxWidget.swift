@@ -101,12 +101,16 @@ struct TileEntry: TimelineEntry {
     /// The side the changed photo slides in from.
     var side: TileShuffle.Side = .bottom
     var generations: [Int] = []
+    /// The slot that just changed; the small Home Screen tile shows only that one.
+    var changed: Int?
     let accentHex: UInt32
     let title: String
     let isPro: Bool
     var url: URL? = URL(string: "luminux://hub")
     /// "A collection" is picked but none is chosen yet, or it was removed in the app.
     var needsCollection = false
+    /// Pro and switched on in settings; otherwise StandBy shows the plain one-photo tile.
+    var showsStandBy = false
 }
 
 struct TileProvider: AppIntentTimelineProvider {
@@ -118,12 +122,12 @@ struct TileProvider: AppIntentTimelineProvider {
         entry(for: configuration, at: .now, order: Array(configuration.imageURLs.prefix(Self.slots(for: context.family))))
     }
 
-    /// How many photos each size shows.
+    /// How many photos each size shows. The small tile keeps three for its StandBy face, which WidgetKit doesn't tell
+    /// the timeline about; on the Home Screen it shows whichever changed last.
     static func slots(for family: WidgetFamily) -> Int {
         switch family {
-        case .systemMedium: 3
         case .systemLarge, .systemExtraLarge: 4
-        default: 1
+        default: 3
         }
     }
 
@@ -141,6 +145,7 @@ struct TileProvider: AppIntentTimelineProvider {
             var entry = entry(for: configuration, at: .now.addingTimeInterval(Double(index) * Self.shuffleInterval), order: step.slots)
             entry.side = step.side
             entry.generations = step.generations
+            entry.changed = step.changed
             return entry
         }
         return Timeline(entries: entries, policy: .atEnd)
@@ -158,7 +163,8 @@ struct TileProvider: AppIntentTimelineProvider {
             title: configuration.tileTitle,
             isPro: LiveTileStore.unlocksWideTiles,
             url: configuration.url,
-            needsCollection: configuration.source == .collection && configuration.storedCollection == nil
+            needsCollection: configuration.source == .collection && configuration.storedCollection == nil,
+            showsStandBy: LiveTileStore.showsStandBy && LiveTileStore.unlocksWideTiles
         )
     }
 }
@@ -178,6 +184,8 @@ struct PhotosLiveTile: Widget {
 struct TileView: View {
     let entry: TileEntry
     @Environment(\.widgetFamily) private var family
+    /// False in StandBy (the phone charging on its side), where the small tile becomes photo tiles and a date tile.
+    @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
     /// The medium and large tiles come with Luminux Pro; the small one is free.
     private var isLocked: Bool { family != .systemSmall && !entry.isPro }
@@ -215,7 +223,43 @@ struct TileView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    @ViewBuilder
     private var tile: some View {
+        if family == .systemSmall && !showsBackground && showsPhotos && entry.showsStandBy {
+            standBy
+        } else {
+            homeTile
+        }
+    }
+
+    /// Like a corner of the hub: three photo tiles and today's date on an accent tile.
+    private var standBy: some View {
+        Grid(horizontalSpacing: Self.gutter * 2, verticalSpacing: Self.gutter * 2) {
+            GridRow {
+                photo(0)
+                // Bottom-aligned, clear of the rounded corner StandBy and the Home Screen cut into this tile.
+                VStack(alignment: .leading, spacing: 0) {
+                    Spacer(minLength: 0)
+                    Text(entry.date.formatted(.dateTime.day()))
+                        .font(.custom("Selawik-Light", size: 44))
+                    Text(entry.date.formatted(.dateTime.weekday(.wide).month(.abbreviated)).lowercased())
+                        .font(.custom("Selawik-Semilight", size: 13))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .foregroundStyle(.white)
+                .padding(8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .background(Color(hex: entry.accentHex))
+            }
+            GridRow {
+                photo(1)
+                photo(2)
+            }
+        }
+    }
+
+    private var homeTile: some View {
         ZStack(alignment: .bottomLeading) {
             if entry.needsCollection {
                 Text("Touch and hold, then Edit Widget to choose a collection.")
@@ -261,13 +305,14 @@ struct TileView: View {
                 }
             }
         default:
-            photo(0)
+            // The newest photo always lands on top as it slides in.
+            photo(entry.changed ?? 0, layer: entry.generations.reduce(0, +))
         }
     }
 
     /// The changed photo slides in over the old one from the entry's side; the old one sinks back and fades. The
     /// old photo's way out doesn't depend on a side, so it can't disagree with the new one's.
-    private func photo(_ slot: Int) -> some View {
+    private func photo(_ slot: Int, layer: Int? = nil) -> some View {
         let images = entry.imageURLs
         let url = images[safe: slot] ?? images[0]
         return Color.clear
@@ -278,7 +323,7 @@ struct TileView: View {
                         .widgetAccentedRenderingMode(.fullColor)
                         .scaledToFill()
                         .id(url)
-                        .zIndex(Double(entry.generations[safe: slot] ?? 0))
+                        .zIndex(Double(layer ?? entry.generations[safe: slot] ?? 0))
                         .transition(.asymmetric(
                             insertion: .move(edge: entry.side.edge),
                             removal: .scale(scale: 0.9).combined(with: .opacity)

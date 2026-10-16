@@ -2,8 +2,8 @@ import StoreKit
 import SwiftUI
 import WidgetKit
 
-/// The one-time "Luminux Pro" purchase: custom accent colours, the medium and large live tiles, unlimited hub pins,
-/// the slideshow and editing.
+/// The one-time "Luminux Pro" purchase: custom accent colours, the medium and large live tiles and the StandBy face,
+/// unlimited hub pins, the slideshow, editing, grid sizes and the hub background source.
 @Observable
 final class ProStore {
     static let productID = "com.buddhanag.luminux.pro"
@@ -26,7 +26,9 @@ final class ProStore {
         #endif
     }()
 
-    var unlocksCustomAccent: Bool { isUnlocked || Self.isTestBuild }
+    var unlocksCustomAccent: Bool { unlocksPro }
+    /// Pro features that test installs get for free: the accent, the StandBy face, grid sizes, the background source.
+    var unlocksPro: Bool { isUnlocked || Self.isTestBuild }
 
     init() {
         // The last known state, so Pro features don't flicker off while the App Store answers.

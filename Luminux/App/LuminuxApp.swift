@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 @main
 struct LuminuxApp: App {
@@ -158,6 +159,11 @@ private struct AppShell: View {
             // Deleted albums leave the hub too.
             guard library.isLoaded else { return }
             hubTiles.prune(albumIDs: Set(library.albums.map(\.id)))
+        }
+        .onChange(of: settings.showsStandBy, initial: true) { _, shows in
+            guard LiveTileStore.showsStandBy != shows else { return }
+            LiveTileStore.showsStandBy = shows
+            WidgetCenter.shared.reloadAllTimelines()
         }
         .onChange(of: store.unlocksCustomAccent) { _, unlocked in
             // A refunded purchase takes its custom colour with it.

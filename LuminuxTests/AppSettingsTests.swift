@@ -22,6 +22,16 @@ struct AppSettingsTests {
         #expect(settings.tiltStrength == .medium)
         #expect(settings.animatesLiveTiles)
         #expect(settings.animatesTilePatterns)
+        #expect(settings.showsStandBy)
+    }
+
+    @Test func theBackgroundSourceIsKept() {
+        let defaults = freshDefaults()
+        #expect(AppSettings(defaults: defaults).hubBackground == .favorites)
+        for source: HubBackgroundSource in [.everything, .album("a/1"), .photoSet("s"), .photos(["p1", "p2"])] {
+            AppSettings(defaults: defaults).hubBackground = source
+            #expect(AppSettings(defaults: defaults).hubBackground == source)
+        }
     }
 
     @Test func tileAnimationSwitchesAreKept() {
@@ -29,9 +39,11 @@ struct AppSettingsTests {
         let settings = AppSettings(defaults: defaults)
         settings.animatesLiveTiles = false
         settings.animatesTilePatterns = false
+        settings.showsStandBy = false
         let reloaded = AppSettings(defaults: defaults)
         #expect(!reloaded.animatesLiveTiles)
         #expect(!reloaded.animatesTilePatterns)
+        #expect(!reloaded.showsStandBy)
     }
 
     @Test func persistsChanges() {

@@ -66,8 +66,11 @@ struct AssetGrid: View {
     @Environment(PhotoLibrary.self) private var library
     @Environment(Navigator.self) private var navigator
     @Environment(AppSettings.self) private var settings
+    @Environment(ProStore.self) private var store
     @Environment(\.metro) private var metro
     @Environment(\.displayScale) private var displayScale
+    /// A pinch without Pro springs back and says why.
+    @State private var showsProNote = false
     @State private var gridWidth: CGFloat = 360
     /// The tile a long press just selected, so the tap that ends the press doesn't toggle it straight back off.
     @State private var longPressedID: String?
@@ -78,7 +81,8 @@ struct AssetGrid: View {
     @State private var pinch = GridPinch()
     @State private var swipe: SwipeState?
 
-    private var columns: Int { settings.gridColumns }
+    /// Grid sizes come with Pro; without it every grid stays at the default.
+    private var columns: Int { store.unlocksPro ? settings.gridColumns : GridZoom.defaultColumns }
     private var tileSide: CGFloat { (gridWidth - MetroMetrics.gutter * CGFloat(columns - 1)) / CGFloat(columns) }
 
     var body: some View {
@@ -150,7 +154,36 @@ struct AssetGrid: View {
             .onChange(of: library.changeToken) { tileFrames.removeAll() }
         }
         .clipped()
+        .overlay(alignment: .top) {
+            if showsProNote { proNote }
+        }
+        .task(id: showsProNote) {
+            guard showsProNote else { return }
+            try? await Task.sleep(for: .seconds(3))
+            withAnimation(MetroMotion.fade) { showsProNote = false }
+        }
         .padding(.horizontal, MetroMetrics.margin)
+    }
+
+    private var proNote: some View {
+        Button {
+            showsProNote = false
+            navigator.push(.pro)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "lock.fill").font(.system(size: 14, weight: .light))
+                Text("Grid sizes come with Luminux Pro. Tap to see what it adds.")
+                    .font(.metro(15, .semilight))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(.white)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(metro.accentColor)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     private static let gridSpace = "assetGrid"
@@ -187,7 +220,10 @@ struct AssetGrid: View {
     /// Switches to the level the pinch chose without anything visibly moving, then lets the grid settle into it.
     private func settlePinch(scale: CGFloat, velocity: CGFloat, centroid: CGPoint, viewport: CGSize) {
         let next = GridZoom.columns(after: columns, magnification: scale, velocity: velocity)
-        if next != columns, let anchorIndex = pinch.anchorIndex {
+        if next != columns, !store.unlocksPro {
+            settle()
+            withAnimation(MetroMotion.standard) { showsProNote = true }
+        } else if next != columns, let anchorIndex = pinch.anchorIndex {
             let oldSide = tileSide
             let newSide = GridZoom.tileSide(columns: next, width: gridWidth, gutter: MetroMetrics.gutter)
             let visualScale = pinch.scale * oldSide / newSide

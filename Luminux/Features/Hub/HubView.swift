@@ -198,7 +198,32 @@ struct HubView: View {
 private struct HubBackground: View {
     @Environment(PhotoLibrary.self) private var library
     @Environment(AppSettings.self) private var settings
+    @Environment(ProStore.self) private var store
+    @Environment(HubTiles.self) private var hubTiles
     @State private var image: UIImage?
+
+    private struct LoadKey: Equatable {
+        let isLoaded: Bool
+        let source: HubBackgroundSource
+    }
+
+    /// The chosen photos, falling back to favorites and then everything when they're gone or empty.
+    private var candidates: [AssetItem] {
+        let chosen: PHFetchResult<PHAsset>? = switch source {
+        case .favorites: nil
+        case .everything: library.allAssets
+        case .album(let id): library.assets(in: .album(id))
+        case .photoSet(let id): library.assets(in: .identifiers(hubTiles.photoSet(id: id)?.photoIDs ?? []))
+        case .photos(let ids): library.assets(in: .identifiers(ids))
+        }
+        for source in [chosen, library.favorites, library.allAssets].compactMap({ $0 }) {
+            let photos = source.items(limit: 200).filter { $0.asset.mediaType == .image }
+            if !photos.isEmpty { return photos }
+        }
+        return []
+    }
+
+    private var source: HubBackgroundSource { BackgroundPicker.current(settings, store: store) }
 
     var body: some View {
         Color.clear
@@ -215,11 +240,8 @@ private struct HubBackground: View {
             }
             .animation(.easeOut(duration: 0.4), value: image == nil)
             .clipped()
-            .task(id: library.isLoaded) {
-                guard image == nil else { return }
-                let source = library.favorites.count > 0 ? library.favorites : library.allAssets
-                let photos = source.items(limit: 40).filter { $0.asset.mediaType == .image }
-                guard let pick = photos.randomElement() else { return }
+            .task(id: LoadKey(isLoaded: library.isLoaded, source: source)) {
+                guard library.isLoaded, let pick = candidates.randomElement() else { return }
                 // Big enough for the parallax width at 2x; it sits under a dark overlay, so 3x would only cost memory
                 // and a longer first draw while the hub opens.
                 for await next in ImageLoader.shared.images(for: pick.asset, targetSize: CGSize(width: 1800, height: 1800)) {
