@@ -6,37 +6,30 @@ nonisolated enum GridZoom {
     static let levels = [2, 3, 4, 6, 8]
     static let defaultColumns = 4
 
-    /// How far a pinch has to go before the grid changes level.
-    static let threshold: CGFloat = 0.15
-
     static func nearestLevel(to columns: Int) -> Int {
         levels.min { abs($0 - columns) < abs($1 - columns) } ?? defaultColumns
     }
 
-    /// The level a pinch lands on: one step per pinch, two for a big one.
-    static func columns(after current: Int, magnification: CGFloat) -> Int {
-        guard let index = levels.firstIndex(of: nearestLevel(to: current)) else { return defaultColumns }
-        let steps: Int
-        if magnification > 1 + threshold {
-            steps = magnification > 2 ? -2 : -1
-        } else if magnification < 1 - threshold {
-            steps = magnification < 0.5 ? 2 : 1
-        } else {
-            steps = 0
-        }
-        return levels[min(max(index + steps, 0), levels.count - 1)]
+    /// The level a pinch is heading to, given how many columns the grid looks like at the pinch's scale: the next
+    /// one out when more than it has, the next one in when fewer; nil past the ends.
+    static func level(toward columns: CGFloat, from current: Int) -> Int? {
+        if columns > CGFloat(current) { return levels.first { $0 > current } }
+        if columns < CGFloat(current) { return levels.last { $0 < current } }
+        return nil
     }
 
-    /// Like `columns(after:magnification:)`, but a quick flick counts as a step even when the fingers barely moved.
-    static func columns(after current: Int, magnification: CGFloat, velocity: CGFloat) -> Int {
-        // Where the pinch would have ended about a tenth of a second later.
-        columns(after: current, magnification: max(magnification + velocity * 0.1, 0.1))
+    /// How far (0...1) a grid that looks like `columns` columns has gone from `current` to `target`, on a log scale,
+    /// so halfway between 4 and 6 is 4.9.
+    static func progress(_ columns: CGFloat, from current: Int, to target: Int) -> CGFloat {
+        min(max(log(columns / CGFloat(current)) / log(CGFloat(target) / CGFloat(current)), 0), 1)
     }
 
-    /// How far a pinch can scale the grid before it starts to resist: as far as the biggest and smallest levels.
+    /// How far a pinch can scale the grid before it starts to resist: as far as the levels either side.
     static func scaleLimits(for columns: Int) -> ClosedRange<CGFloat> {
-        let current = CGFloat(nearestLevel(to: columns))
-        return current / CGFloat(levels.last!)...current / CGFloat(levels.first!)
+        let current = nearestLevel(to: columns)
+        let more = levels.first { $0 > current } ?? current
+        let fewer = levels.last { $0 < current } ?? current
+        return CGFloat(current) / CGFloat(more)...CGFloat(current) / CGFloat(fewer)
     }
 
     /// Follows the fingers inside the limits and slows down past them, so the grid resists instead of stopping dead.
@@ -57,17 +50,37 @@ nonisolated enum GridZoom {
 }
 
 /// Where each laid-out tile sits in the grid, for finding the photo under a finger. A plain class, so writing to it
-/// doesn't re-render the grid.
+/// doesn't re-render the grid. Frames are kept when tiles scroll or page away, since tiles coming back don't report
+/// an unchanged frame again; each is tagged with the level it was measured at, so frames from another level are
+/// ignored.
 final class TileFrames {
-    private var frames: [Int: CGRect] = [:]
+    private var frames: [Int: (rect: CGRect, columns: Int)] = [:]
 
-    func set(_ frame: CGRect, for index: Int) { frames[index] = frame }
-    func frame(of index: Int) -> CGRect? { frames[index] }
-    func remove(_ index: Int) { frames[index] = nil }
-    func removeAll() { frames.removeAll() }
+    func set(_ frame: CGRect, for index: Int, columns: Int) { frames[index] = (frame, columns) }
 
-    func index(at point: CGPoint) -> Int? {
-        frames.first { $0.value.contains(point) }?.key
+    func frame(of index: Int, columns: Int) -> CGRect? {
+        frames[index].flatMap { $0.columns == columns ? $0.rect : nil }
+    }
+
+    /// Every frame measured at `columns`.
+    func frames(columns: Int) -> [(Int, CGRect)] {
+        frames.compactMap { $0.value.columns == columns ? ($0.key, $0.value.rect) : nil }
+    }
+
+    func index(at point: CGPoint, columns: Int) -> Int? {
+        frames.first { $0.value.columns == columns && $0.value.rect.contains(point) }?.key
+    }
+
+    /// The tile nearest `point` among those in `visible`; the grid parks reused tiles off screen at stale positions.
+    func index(nearest point: CGPoint, columns: Int, within visible: CGRect) -> Int? {
+        func distance(_ rect: CGRect) -> CGFloat {
+            let dx = max(rect.minX - point.x, 0, point.x - rect.maxX)
+            let dy = max(rect.minY - point.y, 0, point.y - rect.maxY)
+            return dx * dx + dy * dy
+        }
+        return frames
+            .filter { $0.value.columns == columns && $0.value.rect.intersects(visible) }
+            .min { distance($0.value.rect) < distance($1.value.rect) }?.key
     }
 }
 
@@ -115,6 +128,32 @@ struct GridPinchRecognizer: UIGestureRecognizerRepresentable {
         var centroid: CGPoint = .zero
 
         // Starts alongside the scroll view's pan; the grid turns scrolling off once the pinch begins.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
+        }
+    }
+}
+
+/// A press held on the grid, reported where it started. Leaves the touch to the photo's button, which still gets
+/// the lift that follows.
+struct GridLongPressRecognizer: UIGestureRecognizerRepresentable {
+    var onPress: (CGPoint) -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let recognizer = UILongPressGestureRecognizer()
+        recognizer.minimumPressDuration = 0.4
+        recognizer.cancelsTouchesInView = false
+        recognizer.delegate = context.coordinator
+        return recognizer
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        if recognizer.state == .began { onPress(context.converter.localLocation) }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
             true
         }

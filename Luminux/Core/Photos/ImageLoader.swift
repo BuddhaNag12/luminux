@@ -8,6 +8,27 @@ nonisolated final class ImageLoader: @unchecked Sendable {
 
     private let manager = PHCachingImageManager()
     private let decodeQueue = DispatchQueue(label: "com.buddhanag.luminux.decode", qos: .userInitiated)
+    /// Decoded grid thumbnails, so a tile that appears again (a new zoom level, a pinch's preview, scrolling back)
+    /// shows its photo on its first frame instead of a blank square while it loads.
+    private let thumbnails: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.totalCostLimit = 80 * 1024 * 1024
+        return cache
+    }()
+
+    func cachedThumbnail(for asset: PHAsset, side: CGFloat) -> UIImage? {
+        thumbnails.object(forKey: Self.thumbnailKey(asset, side))
+    }
+
+    func storeThumbnail(_ image: UIImage, for asset: PHAsset, side: CGFloat) {
+        let bytes = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+        thumbnails.setObject(image, forKey: Self.thumbnailKey(asset, side), cost: bytes)
+    }
+
+    private static func thumbnailKey(_ asset: PHAsset, _ side: CGFloat) -> NSString {
+        // The modification date, so an edited photo isn't shown from before the edit.
+        "\(asset.localIdentifier)|\(asset.modificationDate?.timeIntervalSinceReferenceDate ?? 0)|\(Int(side))" as NSString
+    }
 
     func images(for asset: PHAsset, targetSize: CGSize, contentMode: PHImageContentMode = .aspectFill) -> AsyncStream<UIImage> {
         let manager = manager

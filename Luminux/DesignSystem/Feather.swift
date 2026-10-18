@@ -52,8 +52,11 @@ nonisolated enum Feather {
         let opacity: Animation
     }
 
-    static func timing(toward state: FeatherState, from previous: FeatherState, row: Int, column: Int) -> Timing {
-        let line = Double(min(max(row, 0), visibleRows))
+    /// `rows` is how many lines fit on screen; more lines than `visibleRows` share the same overall spread, so a
+    /// zoomed-out grid turns every line without taking longer.
+    static func timing(toward state: FeatherState, from previous: FeatherState, row: Int, column: Int, rows: Int = visibleRows) -> Timing {
+        let rows = max(rows, visibleRows)
+        let line = Double(min(max(row, 0), rows)) * Double(visibleRows) / Double(rows)
         if state == .shown {
             let base = previous == .below ? enterBaseDelay : revealBaseDelay
             let delay = base + line * rowDelay + Double(column) * columnDelay
@@ -75,10 +78,12 @@ struct FeatherContext: Equatable {
     var previous: FeatherState = .shown
 }
 
-/// The first visible row of a scrolling grid, so rows scrolled above the screen don't hold up the visible ones.
-@Observable
+/// The first visible row of a scrolling grid and how many rows fit on screen, so rows scrolled above the screen
+/// don't hold up the visible ones. Not observed: items read it when their page's state changes, so scrolling past a
+/// row doesn't re-render every tile.
 final class FeatherRowOrigin {
     var row = 0
+    var rows = Feather.visibleRows
 }
 
 extension EnvironmentValues {
@@ -88,8 +93,11 @@ extension EnvironmentValues {
 
 extension View {
     /// Turns this item with its page; `row` sets its line in the feather, `column` a small offset within the line.
-    func metroFeather(row: Int, column: Int = 0) -> some View {
-        modifier(FeatherItem(row: row, column: column))
+    /// Items that know how far they sit from the screen's left edge pass it as `hingeX`, so the turn needn't read
+    /// their on-screen position: reading it re-renders the item whenever anything above it moves, which in a photo
+    /// grid meant every tile on every frame of a pinch or a scroll.
+    func metroFeather(row: Int, column: Int = 0, hingeX: CGFloat? = nil) -> some View {
+        modifier(FeatherItem(row: row, column: column, hingeX: hingeX))
     }
 
     /// Drives the feathered items inside: they turn in once on appear, then follow `restingState`.
@@ -131,31 +139,68 @@ private struct FeatherScope: ViewModifier {
 private struct FeatherItem: ViewModifier {
     let row: Int
     let column: Int
+    let hingeX: CGFloat?
 
     @Environment(\.feather) private var feather
     @Environment(\.featherRowOrigin) private var origin
 
     func body(content: Content) -> some View {
         let visibleRow = row - (origin?.row ?? 0)
-        let isOffScreen = visibleRow < -1 || visibleRow > Feather.visibleRows + 1
+        let rows = origin?.rows ?? Feather.visibleRows
+        let isOffScreen = visibleRow < -1 || visibleRow > rows + 1
         let angle = Feather.angle(for: feather.state)
-        let timing = Feather.timing(toward: feather.state, from: feather.previous, row: visibleRow, column: column)
-        let depth = Feather.depth
-
+        let timing = Feather.timing(toward: feather.state, from: feather.previous, row: visibleRow, column: column, rows: rows)
         content
-            .visualEffect { content, proxy in
-                // Hinge on the screen's left edge, with one shared perspective for every item.
+            .modifier(FeatherTurn(angle: angle, hingeX: hingeX))
+            .animation(isOffScreen ? nil : timing.rotation, value: feather.state)
+            .opacity(feather.state == .shown ? 1 : 0)
+            .animation(isOffScreen ? nil : timing.opacity, value: feather.state)
+    }
+}
+
+/// The turn itself: on a hinge at the screen's left edge, with one shared perspective for every item.
+private struct FeatherTurn: ViewModifier {
+    let angle: Double
+    let hingeX: CGFloat?
+
+    func body(content: Content) -> some View {
+        if let hingeX {
+            content.modifier(FeatherHingeRotation(angle: angle, hingeX: hingeX))
+        } else {
+            content.visualEffect { content, proxy in
                 let frame = proxy.frame(in: .global)
                 let width = max(frame.width, 1)
                 return content.rotation3DEffect(
                     .degrees(angle),
                     axis: (x: 0, y: 1, z: 0),
                     anchor: UnitPoint(x: -frame.minX / width, y: 0.5),
-                    perspective: depth * max(frame.width, frame.height)
+                    perspective: Feather.depth * max(frame.width, frame.height)
                 )
             }
-            .animation(isOffScreen ? nil : timing.rotation, value: feather.state)
-            .opacity(feather.state == .shown ? 1 : 0)
-            .animation(isOffScreen ? nil : timing.opacity, value: feather.state)
+        }
+    }
+}
+
+/// The turn for an item `hingeX` points from the screen's left edge, from its size alone.
+private struct FeatherHingeRotation: GeometryEffect, CustomStringConvertible {
+    var angle: Double
+    let hingeX: CGFloat
+
+    var animatableData: Double {
+        get { angle }
+        set { angle = newValue }
+    }
+
+    /// Spares SwiftUI's renderer reflecting over the struct every frame; see `PerspectiveRotation`.
+    var description: String { "FeatherHingeRotation(\(angle), \(hingeX))" }
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        PerspectiveRotation(
+            angle: angle,
+            axis: (x: 0, y: 1, z: 0),
+            anchor: UnitPoint(x: -hingeX / max(size.width, 1), y: 0.5),
+            perspective: Feather.depth * max(size.width, size.height)
+        )
+        .effectValue(size: size)
     }
 }

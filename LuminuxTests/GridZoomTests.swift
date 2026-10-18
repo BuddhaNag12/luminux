@@ -1,21 +1,27 @@
+import CoreGraphics
 import Testing
 @testable import Luminux
 
 struct GridZoomTests {
-    @Test func pinchingOutShowsFewerBiggerPhotos() {
-        #expect(GridZoom.columns(after: 4, magnification: 1.4) == 3)
-        #expect(GridZoom.columns(after: 4, magnification: 2.5) == 2)
+    @Test func aPinchHeadsToTheNextLevelEitherWay() {
+        // 4 columns drawn at 1.4× look like 2.9 columns.
+        #expect(GridZoom.level(toward: 4 / 1.4, from: 4) == 3)
+        #expect(GridZoom.level(toward: 4 / 0.7, from: 4) == 6)
+        // One level per pinch, however far it goes.
+        #expect(GridZoom.level(toward: 4 / 0.3, from: 4) == 6)
+        #expect(GridZoom.level(toward: 4, from: 4) == nil)
+        #expect(GridZoom.level(toward: 1, from: 2) == nil)
+        #expect(GridZoom.level(toward: 20, from: 8) == nil)
     }
 
-    @Test func pinchingInShowsMorePhotos() {
-        #expect(GridZoom.columns(after: 4, magnification: 0.7) == 6)
-        #expect(GridZoom.columns(after: 4, magnification: 0.4) == 8)
-    }
-
-    @Test func smallPinchesAndTheEndsStayPut() {
-        #expect(GridZoom.columns(after: 4, magnification: 1.1) == 4)
-        #expect(GridZoom.columns(after: 2, magnification: 3) == 2)
-        #expect(GridZoom.columns(after: 8, magnification: 0.3) == 8)
+    @Test func progressIsHalfwayAtTheLogMidpoint() {
+        #expect(GridZoom.progress(4, from: 4, to: 6) == 0)
+        #expect(GridZoom.progress(6, from: 4, to: 6) == 1)
+        #expect(abs(GridZoom.progress(sqrt(24), from: 4, to: 6) - 0.5) < 0.001)
+        #expect(GridZoom.progress(4.3, from: 4, to: 6) < 0.5)
+        #expect(GridZoom.progress(9, from: 4, to: 6) == 1)
+        // Pinching the other way counts from the same start.
+        #expect(abs(GridZoom.progress(sqrt(12), from: 4, to: 3) - 0.5) < 0.001)
     }
 
     @Test func oddColumnCountsSnapToALevel() {
@@ -23,24 +29,39 @@ struct GridZoomTests {
         #expect(GridZoom.nearestLevel(to: 20) == 8)
     }
 
-    @Test func aQuickFlickTakesOneStep() {
-        #expect(GridZoom.columns(after: 4, magnification: 1.05, velocity: 2) == 3)
-        #expect(GridZoom.columns(after: 4, magnification: 0.95, velocity: -2) == 6)
-        #expect(GridZoom.columns(after: 4, magnification: 1.05, velocity: 0) == 4)
-    }
-
-    @Test func theGridScalesFreelyUpToTheEndLevels() {
+    @Test func theGridScalesFreelyToTheLevelsEitherSide() {
         let limits = GridZoom.scaleLimits(for: 4)
-        #expect(limits == 0.5...2)
-        #expect(GridZoom.rubberBand(1.5, limits: limits) == 1.5)
-        #expect(GridZoom.rubberBand(0.6, limits: limits) == 0.6)
+        #expect(abs(limits.lowerBound - 4.0 / 6) < 0.001 && abs(limits.upperBound - 4.0 / 3) < 0.001)
+        #expect(GridZoom.rubberBand(1.2, limits: limits) == 1.2)
+        #expect(GridZoom.rubberBand(0.7, limits: limits) == 0.7)
     }
 
-    @Test func pastTheEndLevelsTheGridResists() {
+    @Test func pastTheNextLevelsTheGridResists() {
         let limits = GridZoom.scaleLimits(for: 2)
         let stretched = GridZoom.rubberBand(3, limits: limits)
         #expect(stretched > 1 && stretched < 1.5)
         let squeezed = GridZoom.rubberBand(0.1, limits: GridZoom.scaleLimits(for: 8))
         #expect(squeezed < 1 && squeezed > 0.6)
+    }
+
+    @Test func aPinchBetweenPhotosAnchorsOnTheNearestOne() {
+        let frames = TileFrames()
+        let screen = CGRect(x: 0, y: 0, width: 400, height: 800)
+        frames.set(CGRect(x: 0, y: 48, width: 60, height: 60), for: 0, columns: 6)
+        frames.set(CGRect(x: 64, y: 48, width: 60, height: 60), for: 1, columns: 6)
+        // In the gutter, nearer the second photo; above the first row, over the month header.
+        #expect(frames.index(at: CGPoint(x: 62.5, y: 70), columns: 6) == nil)
+        #expect(frames.index(nearest: CGPoint(x: 62.5, y: 70), columns: 6, within: screen) == 1)
+        #expect(frames.index(nearest: CGPoint(x: 10, y: 20), columns: 6, within: screen) == 0)
+    }
+
+    @Test func framesFromAnotherLevelOrOffScreenAreIgnored() {
+        let frames = TileFrames()
+        let screen = CGRect(x: 0, y: 0, width: 400, height: 800)
+        frames.set(CGRect(x: 0, y: 48, width: 90, height: 90), for: 0, columns: 4)
+        frames.set(CGRect(x: 0, y: 5000, width: 60, height: 60), for: 7, columns: 6)
+        #expect(frames.frame(of: 0, columns: 6) == nil)
+        #expect(frames.index(nearest: CGPoint(x: 10, y: 60), columns: 6, within: screen) == nil)
+        #expect(frames.index(nearest: CGPoint(x: 10, y: 60), columns: 4, within: screen) == 0)
     }
 }
