@@ -73,7 +73,7 @@ struct AssetGrid: View {
     @State private var showsProNote = false
     @State private var gridWidth: CGFloat = 360
     /// The tile a long press just selected, so the tap that ends the press doesn't toggle it straight back off.
-    @State private var longPressedID: String?
+    @State private var touch = GridTouch()
     @State private var featherOrigin = FeatherRowOrigin()
     @State private var scrollPosition = ScrollPosition()
     @State private var metrics = GridScrollMetrics()
@@ -100,7 +100,6 @@ struct AssetGrid: View {
 
     var body: some View {
         let assets = library.assets(in: source)
-        let gridItems = Array(repeating: GridItem(.flexible(), spacing: MetroMetrics.gutter), count: columns)
 
         let layout = layout(columns: columns)
 
@@ -126,8 +125,11 @@ struct AssetGrid: View {
                                 .offset(y: slot.frame.minY)
                         }
                     }
-                    ForEach(layout.indices(in: rendered), id: \.self) { index in
-                        tile(assets, index: index, layout: layout)
+                    // By row, each skipped when nothing about it changed: scrolling only builds the rows coming on.
+                    ForEach(layout.rows(in: rendered), id: \.row) { slot in
+                        GridRowView(slot: slot, side: layout.side, gutter: layout.gutter, assets: assets, source: source, selection: selection, pinch: pinch, touch: touch)
+                            .equatable()
+                            .offset(y: slot.y)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -170,10 +172,10 @@ struct AssetGrid: View {
                       let index = layout.index(at: CGPoint(x: location.x, y: location.y + metrics.offsetY)),
                       index < assets.count else { return }
                 let id = assets.object(at: index).localIdentifier
-                longPressedID = id
+                touch.longPressedID = id
                 selection.begin(with: id)
             })
-            .sensoryFeedback(.selection, trigger: longPressedID) { _, new in new != nil }
+            .sensoryFeedback(.selection, trigger: touch.longPressedID) { _, new in new != nil }
             .sensoryFeedback(.selection, trigger: swipe?.current)
             .sensoryFeedback(.impact(weight: .light), trigger: columns)
             .onChange(of: jumpTarget) { _, target in
@@ -632,45 +634,6 @@ struct AssetGrid: View {
         }
     }
 
-    private func tile(_ assets: PHFetchResult<PHAsset>, index: Int, layout: GridLayout) -> some View {
-        let asset = assets.object(at: index)
-        let id = asset.localIdentifier
-        let frame = layout.frame(of: index) ?? .zero
-        let cell = layout.cell(of: index) ?? (0, 0)
-        return Button {
-            if pinch.isActive {
-                return
-            } else if longPressedID == id {
-                longPressedID = nil
-            } else if selection.isActive {
-                selection.toggle(id)
-            } else {
-                navigator.openViewer(source, at: id, index: index)
-            }
-        } label: {
-            AssetThumbnail(asset: asset, pixelSide: layout.side * displayScale)
-                .frame(width: layout.side, height: layout.side)
-                .overlay(alignment: .topTrailing) {
-                    if selection.isActive {
-                        SelectionBox(isSelected: selection.selectedIDs.contains(id))
-                            .padding(6)
-                            .transition(.opacity)
-                    }
-                }
-                .overlay {
-                    if selection.selectedIDs.contains(id) {
-                        Rectangle().strokeBorder(metro.accentColor, lineWidth: 3)
-                    }
-                }
-        }
-        .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
-        .metroFeather(row: cell.row, column: cell.column, hingeX: MetroMetrics.margin + frame.minX)
-        .modifier(PinchHidesTile(pinch: pinch))
-        .zoomSource(id: id)
-        .accessibilityAddTraits(selection.selectedIDs.contains(id) ? .isSelected : [])
-        .offset(x: frame.minX, y: frame.minY)
-    }
-
     private func header(_ section: MonthSection, assets: PHFetchResult<PHAsset>) -> some View {
         HStack(spacing: 0) {
             Button {
@@ -700,6 +663,77 @@ struct AssetGrid: View {
                 .accessibilityLabel(selectedCount == ids.count ? "Clear \(section.title())" : "Select all of \(section.title())")
             }
         }
+    }
+}
+
+/// The photo a long press just selected, so the tap that ends the press doesn't toggle it straight back off.
+@Observable
+final class GridTouch {
+    var longPressedID: String?
+}
+
+/// One row of a grid's photos. Equatable on what places it, so a scroll that rebuilds the grid's rows skips the ones
+/// still on screen; what changes inside (selection, a pinch hiding the photos) it observes itself.
+private struct GridRowView: View, Equatable {
+    let slot: GridLayout.RowSlot
+    let side: CGFloat
+    let gutter: CGFloat
+    let assets: PHFetchResult<PHAsset>
+    let source: AssetSource
+    let selection: SelectionModel
+    let pinch: GridPinch
+    let touch: GridTouch
+
+    @Environment(Navigator.self) private var navigator
+    @Environment(\.metro) private var metro
+    @Environment(\.displayScale) private var displayScale
+
+    nonisolated static func == (a: Self, b: Self) -> Bool {
+        a.slot == b.slot && a.side == b.side && a.assets === b.assets
+    }
+
+    var body: some View {
+        HStack(spacing: gutter) {
+            ForEach(slot.range, id: \.self) { index in
+                tile(index, column: index - slot.range.lowerBound)
+            }
+        }
+    }
+
+    private func tile(_ index: Int, column: Int) -> some View {
+        let asset = assets.object(at: index)
+        let id = asset.localIdentifier
+        return Button {
+            if pinch.isActive {
+                return
+            } else if touch.longPressedID == id {
+                touch.longPressedID = nil
+            } else if selection.isActive {
+                selection.toggle(id)
+            } else {
+                navigator.openViewer(source, at: id, index: index)
+            }
+        } label: {
+            AssetThumbnail(asset: asset, pixelSide: side * displayScale)
+                .frame(width: side, height: side)
+                .overlay(alignment: .topTrailing) {
+                    if selection.isActive {
+                        SelectionBox(isSelected: selection.selectedIDs.contains(id))
+                            .padding(6)
+                            .transition(.opacity)
+                    }
+                }
+                .overlay {
+                    if selection.selectedIDs.contains(id) {
+                        Rectangle().strokeBorder(metro.accentColor, lineWidth: 3)
+                    }
+                }
+        }
+        .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
+        .metroFeather(row: slot.row, column: column, hingeX: MetroMetrics.margin + CGFloat(column) * (side + gutter))
+        .modifier(PinchHidesTile(pinch: pinch))
+        .zoomSource(id: id)
+        .accessibilityAddTraits(selection.selectedIDs.contains(id) ? .isSelected : [])
     }
 }
 
@@ -738,9 +772,7 @@ struct AssetThumbnail: View {
         self.asset = asset
         self.pixelSide = pixelSide
         // Any size already loaded beats a blank square while the right one loads.
-        let side = Self.requestSide(for: pixelSide)
-        _image = State(initialValue: ([side] + Self.requestSides.reversed()).lazy
-            .compactMap { ImageLoader.shared.cachedThumbnail(for: asset, side: $0) }.first)
+        _image = State(initialValue: ImageLoader.shared.cachedThumbnail(for: asset))
     }
 
     /// Request sizes come in steps, so neighbouring zoom levels share one image instead of loading it twice.

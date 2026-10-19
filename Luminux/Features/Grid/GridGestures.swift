@@ -171,6 +171,34 @@ nonisolated struct GridLayout: Equatable {
         return result
     }
 
+    /// Every row of photos that meets `rect`: its stagger row (unique across the grid), photos and top.
+    func rows(in rect: CGRect) -> [RowSlot] {
+        guard let first = sectionIndex(atY: rect.minY) else { return [] }
+        var result: [RowSlot] = []
+        for section in sections[first...] {
+            guard section.top <= rect.maxY else { break }
+            let top = rowsTop(section)
+            let firstRow = max(Int(((rect.minY - top) / pitch).rounded(.down)), 0)
+            let lastRow = min(Int(((rect.maxY - top) / pitch).rounded(.down)), section.rows - 1)
+            guard firstRow <= lastRow else { continue }
+            for row in firstRow...lastRow {
+                let lower = section.range.lowerBound + row * columns
+                result.append(RowSlot(
+                    row: section.firstRow + (section.hasHeader ? 1 : 0) + row,
+                    range: lower..<min(lower + columns, section.range.upperBound),
+                    y: top + CGFloat(row) * pitch
+                ))
+            }
+        }
+        return result
+    }
+
+    struct RowSlot: Equatable {
+        let row: Int
+        let range: Range<Int>
+        let y: CGFloat
+    }
+
     /// The month titles that meet `rect`, by section position.
     func headers(in rect: CGRect) -> [(position: Int, frame: CGRect, row: Int)] {
         sections.indices.compactMap { position in
