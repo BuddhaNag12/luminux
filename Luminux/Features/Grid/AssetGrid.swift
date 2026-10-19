@@ -94,9 +94,13 @@ struct AssetGrid: View {
 
     /// The part of the grid drawn: the screen and a little either side, so a scroll's next rows are ready.
     private var renderedRect: CGRect {
-        let band = viewportHeight / 4
+        let band = viewportHeight / Self.bandsPerScreen
         return CGRect(x: 0, y: CGFloat(renderBand - 1) * band, width: gridWidth, height: viewportHeight + band * 3)
     }
+
+    /// A sixth of the screen: small enough that little is drawn off screen (at 15 columns every extra row is 15
+    /// photos), big enough that a fast scroll rebuilds now and then rather than every frame.
+    private static let bandsPerScreen: CGFloat = 6
 
     var body: some View {
         let assets = library.assets(in: source)
@@ -114,28 +118,25 @@ struct AssetGrid: View {
                 }
 
                 // Drawn only where it's on screen, at worked-out places; see `GridLayout`.
-                ZStack(alignment: .topLeading) {
-                    Color.clear.frame(height: layout.height)
+                PlacedLayout(height: layout.height) {
                     let rendered = renderedRect
                     if let sections {
                         ForEach(layout.headers(in: rendered), id: \.position) { slot in
                             header(sections[slot.position], assets: assets)
-                                .frame(width: slot.frame.width, height: slot.frame.height)
                                 .metroFeather(row: slot.row, hingeX: MetroMetrics.margin)
-                                .offset(y: slot.frame.minY)
+                                .placed(slot.frame)
                         }
                     }
                     // By row, each skipped when nothing about it changed: scrolling only builds the rows coming on.
                     ForEach(layout.rows(in: rendered), id: \.row) { slot in
                         GridRowView(slot: slot, side: layout.side, gutter: layout.gutter, assets: assets, source: source, selection: selection, pinch: pinch, touch: touch)
                             .equatable()
-                            .offset(y: slot.y)
+                            .placed(CGRect(x: 0, y: slot.y, width: CGFloat(slot.range.count) * layout.pitch, height: layout.side))
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
             }
-            .scrollPosition($scrollPosition)            .scrollPosition($scrollPosition)
+            .scrollPosition($scrollPosition)
             .scrollIndicators(.hidden)
             .environment(\.featherRowOrigin, featherOrigin)
             .onScrollGeometryChange(for: ScrollGeometry.self) { $0 } action: { _, geometry in
@@ -148,7 +149,7 @@ struct AssetGrid: View {
                 featherOrigin.row = layout.row(atY: max(geometry.contentOffset.y + geometry.contentInsets.top, 0))
                 featherOrigin.rows = Int((geometry.containerSize.height / layout.pitch).rounded(.up))
                 if viewportHeight != geometry.containerSize.height { viewportHeight = geometry.containerSize.height }
-                let band = Int((geometry.contentOffset.y / max(viewportHeight / 4, 1)).rounded(.down))
+                let band = Int((geometry.contentOffset.y / max(viewportHeight / Self.bandsPerScreen, 1)).rounded(.down))
                 if band != renderBand { renderBand = band }
             }
             // The pinch moves the grid itself; the scroll view would otherwise pan it too.
@@ -694,9 +695,11 @@ private struct GridRowView: View, Equatable {
     }
 
     var body: some View {
-        HStack(spacing: gutter) {
+        PlacedLayout(height: side) {
             ForEach(slot.range, id: \.self) { index in
-                tile(index, column: index - slot.range.lowerBound)
+                let column = index - slot.range.lowerBound
+                tile(index, column: column)
+                    .placed(CGRect(x: CGFloat(column) * (side + gutter), y: 0, width: side, height: side))
             }
         }
     }

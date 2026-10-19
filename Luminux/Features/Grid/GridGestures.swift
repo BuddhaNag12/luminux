@@ -350,3 +350,31 @@ struct GridPinchingKey: PreferenceKey {
     static let defaultValue = false
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
+
+/// Puts each subview in the rect it carries (see `placed(_:)`) without measuring it first: a grid's places are
+/// worked out already, and asking hundreds of photos their size on every scroll step was most of its layout time.
+struct PlacedLayout: Layout {
+    var height: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        CGSize(width: proposal.width ?? 0, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for subview in subviews {
+            let rect = subview[PlacedRect.self]
+            subview.place(at: CGPoint(x: bounds.minX + rect.minX, y: bounds.minY + rect.minY), proposal: ProposedViewSize(rect.size))
+        }
+    }
+}
+
+nonisolated struct PlacedRect: LayoutValueKey {
+    static let defaultValue = CGRect.zero
+}
+
+extension View {
+    /// Where `PlacedLayout` puts this view.
+    func placed(_ rect: CGRect) -> some View {
+        layoutValue(key: PlacedRect.self, value: rect)
+    }
+}

@@ -47,23 +47,41 @@ nonisolated final class ImageLoader: @unchecked Sendable {
 
     func images(for asset: PHAsset, targetSize: CGSize, contentMode: PHImageContentMode = .aspectFill) -> AsyncStream<UIImage> {
         let manager = manager
+        let decodeQueue = decodeQueue
         return AsyncStream { continuation in
             let options = PHImageRequestOptions()
             options.deliveryMode = .opportunistic
             options.resizeMode = .fast
             options.isNetworkAccessAllowed = true
-            let decodeQueue = DispatchQueue(label: "com.buddhanag.luminux.decode.request", target: decodeQueue)
-            let request = manager.requestImage(for: asset, targetSize: targetSize, contentMode: contentMode, options: options) { @Sendable image, info in
-                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                let failed = info?[PHImageErrorKey] != nil || (info?[PHImageCancelledKey] as? Bool) == true
-                // Decode before the view sees it; otherwise the first draw decodes on the main thread and stalls animations.
-                decodeQueue.async {
-                    if let image { continuation.yield(image.preparingForDisplay() ?? image) }
-                    if !isDegraded || failed { continuation.finish() }
+            // Each request has its own serial queue: its quick low-quality image stays ahead of its final one, and
+            // asking PhotoKit for it (which takes a while for hundreds of photos at once) happens off the main thread.
+            let queue = DispatchQueue(label: "com.buddhanag.luminux.decode.request", target: decodeQueue)
+            let request = RequestBox()
+            queue.async {
+                guard !request.isCancelled else { return }
+                request.id = manager.requestImage(for: asset, targetSize: targetSize, contentMode: contentMode, options: options) { @Sendable image, info in
+                    let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                    let failed = info?[PHImageErrorKey] != nil || (info?[PHImageCancelledKey] as? Bool) == true
+                    // Decode before the view sees it; otherwise the first draw decodes on the main thread and stalls animations.
+                    queue.async {
+                        if let image { continuation.yield(image.preparingForDisplay() ?? image) }
+                        if !isDegraded || failed { continuation.finish() }
+                    }
                 }
             }
-            continuation.onTermination = { _ in manager.cancelImageRequest(request) }
+            continuation.onTermination = { _ in
+                queue.async {
+                    request.isCancelled = true
+                    if let id = request.id { manager.cancelImageRequest(id) }
+                }
+            }
         }
+    }
+
+    /// A request's id and whether it was cancelled before it started; touched only on the request's own queue.
+    private final class RequestBox: @unchecked Sendable {
+        var id: PHImageRequestID?
+        var isCancelled = false
     }
 
     /// Starts loading grid thumbnails ahead of time, replacing the last batch. Matches the grid's request options so
