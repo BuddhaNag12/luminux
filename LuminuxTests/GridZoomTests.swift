@@ -3,45 +3,51 @@ import Testing
 @testable import Luminux
 
 struct GridZoomTests {
+    @Test func levelsAddTheSameColumnsOnEitherSide() {
+        #expect(GridZoom.levels == [3, 5, 15])
+        for (fewer, more) in zip(GridZoom.levels, GridZoom.levels.dropFirst()) {
+            #expect((more - fewer) % 2 == 0)
+        }
+    }
+
     @Test func aPinchHeadsToTheNextLevelEitherWay() {
-        // 4 columns drawn at 1.4× look like 2.9 columns.
-        #expect(GridZoom.level(toward: 4 / 1.4, from: 4) == 3)
-        #expect(GridZoom.level(toward: 4 / 0.7, from: 4) == 6)
-        // One level per pinch, however far it goes.
-        #expect(GridZoom.level(toward: 4 / 0.3, from: 4) == 6)
-        #expect(GridZoom.level(toward: 4, from: 4) == nil)
-        #expect(GridZoom.level(toward: 1, from: 2) == nil)
-        #expect(GridZoom.level(toward: 20, from: 8) == nil)
+        // 5 columns drawn at 1.4× look like 3.6 columns.
+        #expect(GridZoom.level(toward: 5 / 1.4, from: 5) == 3)
+        #expect(GridZoom.level(toward: 5 / 0.7, from: 5) == 15)
+        #expect(GridZoom.level(toward: 5, from: 5) == nil)
+        #expect(GridZoom.level(toward: 2, from: 3) == nil)
+        #expect(GridZoom.level(toward: 20, from: 15) == nil)
     }
 
     @Test func progressIsHalfwayAtTheLogMidpoint() {
-        #expect(GridZoom.progress(4, from: 4, to: 6) == 0)
-        #expect(GridZoom.progress(6, from: 4, to: 6) == 1)
-        #expect(abs(GridZoom.progress(sqrt(24), from: 4, to: 6) - 0.5) < 0.001)
-        #expect(GridZoom.progress(4.3, from: 4, to: 6) < 0.5)
-        #expect(GridZoom.progress(9, from: 4, to: 6) == 1)
+        #expect(GridZoom.progress(3, from: 3, to: 5) == 0)
+        #expect(GridZoom.progress(5, from: 3, to: 5) == 1)
+        #expect(abs(GridZoom.progress(sqrt(15), from: 3, to: 5) - 0.5) < 0.001)
+        #expect(GridZoom.progress(9, from: 3, to: 5) == 1)
         // Pinching the other way counts from the same start.
-        #expect(abs(GridZoom.progress(sqrt(12), from: 4, to: 3) - 0.5) < 0.001)
+        #expect(abs(GridZoom.progress(sqrt(75), from: 15, to: 5) - 0.5) < 0.001)
     }
 
-    @Test func oddColumnCountsSnapToALevel() {
-        #expect(GridZoom.nearestLevel(to: 5) == 4)
-        #expect(GridZoom.nearestLevel(to: 20) == 8)
+    @Test func savedColumnCountsSnapToALevel() {
+        #expect(GridZoom.nearestLevel(to: 4) == 3)
+        #expect(GridZoom.nearestLevel(to: 8) == 5)
+        #expect(GridZoom.nearestLevel(to: 20) == 15)
     }
 
-    @Test func theGridScalesFreelyToTheLevelsEitherSide() {
-        let limits = GridZoom.scaleLimits(for: 4)
-        #expect(abs(limits.lowerBound - 4.0 / 6) < 0.001 && abs(limits.upperBound - 4.0 / 3) < 0.001)
-        #expect(GridZoom.rubberBand(1.2, limits: limits) == 1.2)
-        #expect(GridZoom.rubberBand(0.7, limits: limits) == 0.7)
+    @Test func onePinchCanGoThroughEveryLevel() {
+        // From 3, the grid follows the fingers all the way to 15 columns, and from 15 back to 3.
+        let fromFewest = GridZoom.scaleLimits(for: 3)
+        #expect(abs(fromFewest.lowerBound - 3.0 / 15) < 0.001 && fromFewest.upperBound == 1)
+        #expect(GridZoom.rubberBand(0.3, limits: fromFewest) == 0.3)
+        let fromMost = GridZoom.scaleLimits(for: 15)
+        #expect(fromMost.lowerBound == 1 && fromMost.upperBound == 5)
     }
 
-    @Test func pastTheNextLevelsTheGridResists() {
-        let limits = GridZoom.scaleLimits(for: 2)
-        let stretched = GridZoom.rubberBand(3, limits: limits)
+    @Test func pastTheEndLevelsTheGridResists() {
+        let stretched = GridZoom.rubberBand(2, limits: GridZoom.scaleLimits(for: 3))
         #expect(stretched > 1 && stretched < 1.5)
-        let squeezed = GridZoom.rubberBand(0.1, limits: GridZoom.scaleLimits(for: 8))
-        #expect(squeezed < 1 && squeezed > 0.6)
+        let squeezed = GridZoom.rubberBand(0.5, limits: GridZoom.scaleLimits(for: 15))
+        #expect(squeezed < 1 && squeezed > 0.8)
     }
 
     @Test func aPinchBetweenPhotosAnchorsOnTheNearestOne() {

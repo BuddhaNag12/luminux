@@ -17,7 +17,7 @@ struct AppSettingsTests {
         #expect(settings.accent == .cobalt)
         #expect(settings.showsHubBackground)
         #expect(settings.playsLivingImages)
-        #expect(settings.gridColumns == 4)
+        #expect(settings.gridColumns == 5)
         #expect(settings.movesWithPhone)
         #expect(settings.tiltStrength == .medium)
         #expect(settings.animatesLiveTiles)

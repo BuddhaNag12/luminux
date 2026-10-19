@@ -3,8 +3,9 @@ import UIKit
 
 /// The photo grid's zoom levels, like Photos: pinch out for bigger photos, in for more of them.
 nonisolated enum GridZoom {
-    static let levels = [2, 3, 4, 6, 8]
-    static let defaultColumns = 4
+    /// Odd counts, so each level is the one before with the same number of columns added on either side.
+    static let levels = [3, 5, 15]
+    static let defaultColumns = 5
 
     static func nearestLevel(to columns: Int) -> Int {
         levels.min { abs($0 - columns) < abs($1 - columns) } ?? defaultColumns
@@ -24,12 +25,11 @@ nonisolated enum GridZoom {
         min(max(log(columns / CGFloat(current)) / log(CGFloat(target) / CGFloat(current)), 0), 1)
     }
 
-    /// How far a pinch can scale the grid before it starts to resist: as far as the levels either side.
+    /// How far a pinch can scale the grid before it starts to resist: one pinch can carry on through every level,
+    /// so only past the end ones.
     static func scaleLimits(for columns: Int) -> ClosedRange<CGFloat> {
-        let current = nearestLevel(to: columns)
-        let more = levels.first { $0 > current } ?? current
-        let fewer = levels.last { $0 < current } ?? current
-        return CGFloat(current) / CGFloat(more)...CGFloat(current) / CGFloat(fewer)
+        let current = CGFloat(nearestLevel(to: columns))
+        return current / CGFloat(levels.last!)...current / CGFloat(levels.first!)
     }
 
     /// Follows the fingers inside the limits and slows down past them, so the grid resists instead of stopping dead.
