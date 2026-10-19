@@ -513,6 +513,7 @@ struct AssetGrid: View {
         let anchorTop = anchorNew.minY - previewOffset
         let anchorColumn = Int((anchorNew.minX / pitch).rounded())
         let screen = CGRect(origin: .zero, size: viewport)
+        let zoomsIn = target < base
 
         /// Where a photo sits sorted, on screen.
         func sorted(_ index: Int) -> CGRect? {
@@ -553,7 +554,9 @@ struct AssetGrid: View {
         for index in current.indices(in: screen.offsetBy(dx: 0, dy: pinch.baseOffset)) where index < assetCount {
             guard let now = current.frame(of: index)?.offsetBy(dx: 0, dy: -pinch.baseOffset),
                   let place = current.placeInSection(of: index) else { continue }
-            let column = place.column + columnShift
+            // Zooming in, other months keep their columns: the camera pushing in carries each photo to its own
+            // sorted place, where shifting it with the month under the fingers sent it off the side.
+            let column = place.column + (zoomsIn && !current.isSameSection(index, anchorIndex) ? 0 : columnShift)
             guard let unsorted = next.frame(inSectionOf: index, row: place.row + rowShift(index), column: column)?
                 .offsetBy(dx: 0, dy: -previewOffset) else { continue }
             let spot = GridCell(row: Int(((unsorted.minY - anchorTop) / pitch).rounded()), column: column)
@@ -569,7 +572,7 @@ struct AssetGrid: View {
             let start = CGRect(x: center.x - side / 2, y: center.y - side / 2, width: side, height: side)
             // The month under the fingers sorts as one block; others cross-fade to where they'll be as the camera
             // moves, since the widening about the fingers moves their sorted places.
-            let kind: PinchTile.Kind = current.isSameSection(index, anchorIndex) ? .shown : .moving
+            let kind: PinchTile.Kind = zoomsIn || current.isSameSection(index, anchorIndex) ? .shown : .moving
             tiles.append(PinchTile(index: index, kind: kind, unsorted: unsorted, start: start))
         }
 
@@ -595,10 +598,10 @@ struct AssetGrid: View {
                 // Drawn where the next level puts it (month titles shift rows off the even pitch), so handing over to
                 // the grid at the end moves nothing.
                 guard let index = sortedAt[GridCell(row: row, column: column)], let slot = sorted(index) else { continue }
-                // Zooming in shows fewer photos than are on screen: the ones there grow into their cells, and new
-                // ones from beyond (a narrow strip of the next level above and below, while the camera is far out)
-                // would only show until it pushes in.
-                if target < base, !shown.contains(index) { continue }
+                // Zooming in shows fewer photos than are on screen: every cell it ends on is under one already, which
+                // dissolves into its sorted photo there. Anything drawn beyond them (new photos, or a photo's own
+                // sorted copy above or below the block) showed as a narrow strip while the camera was far out.
+                if target < base { continue }
                 // Already on screen in the old block: its sorted place shows it only once the block sorts, so it's
                 // never drawn twice.
                 if shown.contains(index) {
@@ -620,7 +623,7 @@ struct AssetGrid: View {
         // Under the old photos, each middle cell's sorted photo, for the middle block's change into order.
         let underneath = taken.compactMap { spot in
             sortedAt[spot].flatMap { index in
-                sorted(index).map { PinchTile(index: index, kind: current.isSameSection(index, anchorIndex) ? .sortedMiddle : .arriving, unsorted: $0) }
+                sorted(index).map { PinchTile(index: index, kind: zoomsIn || current.isSameSection(index, anchorIndex) ? .sortedMiddle : .arriving, unsorted: $0) }
             }
         }
         // An old photo beyond the next level's columns has no sorted photo under it: it stays as it is until the
