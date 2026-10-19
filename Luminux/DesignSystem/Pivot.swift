@@ -24,6 +24,8 @@ struct Pivot<Content: View>: View {
     /// The pages beside the first one stay hidden until the pivot is swiped or a header tapped; the push animates
     /// the jump to the opening page, which would drag its neighbour across the screen while the tiles turn in.
     @State private var showsNeighbours = false
+    /// A photo grid on a page is being pinched; its two fingers mustn't page the pivot too.
+    @State private var isPinching = false
     @Environment(\.metro) private var metro
 
     private static var headerSpacing: CGFloat { 24 }
@@ -56,7 +58,14 @@ struct Pivot<Content: View>: View {
                     ScrollView(.horizontal) {
                         LazyHStack(spacing: 0) {
                             ForEach(pages.indices, id: \.self) { index in
-                                pages[index]
+                                // Built only while on screen: a tab's grid or map costs nothing until it's swiped to.
+                                Group {
+                                    if index == selection || abs(CGFloat(index) - progress) < 1 {
+                                        pages[index]
+                                    } else {
+                                        Color.clear
+                                    }
+                                }
                                     // Only the page on screen feathers. The others sit off screen, and turning on the
                                     // screen-edge hinge would swing their tiles into view.
                                     .transformEnvironment(\.feather) { context in
@@ -72,6 +81,8 @@ struct Pivot<Content: View>: View {
                         .scrollTargetLayout()
                     }
                     .scrollTargetBehavior(.paging)
+                    .scrollDisabled(isPinching)
+                    .onPreferenceChange(GridPinchingKey.self) { isPinching = $0 }
                     .scrollPosition(id: $scrolledPage)
                     .onScrollPhaseChange { _, phase in
                         if phase != .idle { showsNeighbours = true }

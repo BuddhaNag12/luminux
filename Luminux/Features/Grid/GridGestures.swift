@@ -344,3 +344,9 @@ struct SwipeSelectRecognizer: UIGestureRecognizerRepresentable {
         }
     }
 }
+
+/// Set while a photo grid is being pinched, so what it sits in (a pivot's pages) holds still.
+struct GridPinchingKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}

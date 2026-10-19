@@ -195,6 +195,7 @@ struct AssetGrid: View {
             withAnimation(MetroMotion.fade) { showsProNote = false }
         }
         .padding(.horizontal, MetroMetrics.margin)
+        .preference(key: GridPinchingKey.self, value: pinch.isActive)
     }
 
     private var proNote: some View {
