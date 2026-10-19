@@ -8,6 +8,8 @@ nonisolated enum GridZoom {
 
     /// The smallest photos are for finding your place, not for acting on: no selecting there.
     static func allowsSelection(columns: Int) -> Bool { columns < levels.last! }
+    /// Where a tap on the 15-column overview zooms in to.
+    static let overviewZoomColumns = 5
     static let defaultColumns = 5
 
     static func nearestLevel(to columns: Int) -> Int {

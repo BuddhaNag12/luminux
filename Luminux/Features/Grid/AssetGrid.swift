@@ -91,6 +91,9 @@ struct AssetGrid: View {
     private var columns: Int { store.unlocksPro ? settings.gridColumns : GridZoom.defaultColumns }
     private var tileSide: CGFloat { (gridWidth - MetroMetrics.gutter * CGFloat(columns - 1)) / CGFloat(columns) }
 
+    /// The smallest photos (15 columns) are an overview: plain thumbnails to find your place in, which a tap zooms into.
+    private var isOverview: Bool { !GridZoom.allowsSelection(columns: columns) }
+
     private func layout(columns: Int) -> GridLayout {
         GridLayout(columns: columns, width: gridWidth, gutter: MetroMetrics.gutter, sections: sections?.map(\.range), count: library.assets(in: source).count)
     }
@@ -132,8 +135,11 @@ struct AssetGrid: View {
                     }
                     // By row, each skipped when nothing about it changed: scrolling only builds the rows coming on.
                     ForEach(layout.rows(in: rendered), id: \.row) { slot in
-                        GridRowView(slot: slot, side: layout.side, gutter: layout.gutter, assets: assets, source: source, selection: selection, pinch: pinch, touch: touch)
-                            .equatable()
+                        GridRowView(
+                            slot: slot, side: layout.side, gutter: layout.gutter, isOverview: isOverview, assets: assets, source: source,
+                            selection: selection, pinch: pinch, touch: touch, zoomIn: { zoomIn(toIndex: $0) }
+                        )
+                        .equatable()
                             .placed(CGRect(x: 0, y: slot.y, width: CGFloat(slot.range.count) * layout.pitch, height: layout.side))
                     }
                 }
@@ -169,6 +175,10 @@ struct AssetGrid: View {
             })
             .gesture(SwipeSelectRecognizer(isEnabled: selection.isActive && !pinch.isActive) { phase, start, location in
                 swipeChanged(phase, start: start, location: location, assets: assets)
+            })
+            // At 15 columns the photos aren't buttons; a tap anywhere zooms in there.
+            .simultaneousGesture(SpatialTapGesture().onEnded { value in
+                if isOverview { zoomIn(at: value.location) }
             })
             // One long press for the whole grid rather than one per photo: UIKit sorts every recognizer on every touch.
             .gesture(GridLongPressRecognizer { location in
@@ -242,6 +252,7 @@ struct AssetGrid: View {
     private static let resizeMotion = Animation.spring(response: 0.25, dampingFraction: 1)
     /// The middle block's change into order (or back), a dissolve with a fade, on its own clock.
     private static let sortMotion = Animation.easeInOut(duration: 0.5)
+    private static let tapZoomMotion = Animation.easeInOut(duration: 0.6)
     /// How far the pinch goes toward the next level before the middle block changes into its order, and back.
     /// Zooming in, it starts almost at once, so it's done before the photos around leave the screen.
     private static func sortsAt(_ zoomsIn: Bool) -> CGFloat { zoomsIn ? 0.1 : 0.3 }
@@ -262,17 +273,8 @@ struct AssetGrid: View {
             pinch.startScale = max(scale, 0.01)
             pinch.gestureScale = 1
             pinch.limits = GridZoom.scaleLimits(for: columns)
-            pinch.anchorPoint = centroid
-            // The photo between the fingers, and where in it they are, so the next level can line it up.
-            let contentPoint = CGPoint(x: centroid.x, y: centroid.y + metrics.offsetY)
-            let current = layout(columns: columns)
-            pinch.anchorIndex = current.index(nearest: contentPoint)
-            let frame = pinch.anchorIndex.flatMap(current.frame(of:))
-            if let frame {
-                pinch.anchorUnit = CGPoint(x: (contentPoint.x - frame.minX) / frame.width, y: (contentPoint.y - frame.minY) / frame.height)
-            }
-            // Where that photo is on screen now, to line it up on its cell in the next level.
-            pinch.anchorFrame = frame?.offsetBy(dx: 0, dy: -metrics.offsetY)
+            pinch.anchorsOnSortedColumn = false
+            setAnchor(at: centroid)
             // Zooming out shows photos that weren't on screen; start loading them before the preview needs them.
             if let index = pinch.anchorIndex, let wider = GridZoom.levels.first(where: { $0 > columns }) {
                 let side = GridZoom.tileSide(columns: wider, width: gridWidth, gutter: MetroMetrics.gutter)
@@ -287,6 +289,72 @@ struct AssetGrid: View {
         }
     }
 
+    /// The photo at `point` on screen, and where in it the point is, so the next level can line it up.
+    private func setAnchor(at point: CGPoint) {
+        pinch.anchorPoint = point
+        let contentPoint = CGPoint(x: point.x, y: point.y + metrics.offsetY)
+        let current = layout(columns: columns)
+        pinch.anchorIndex = current.index(nearest: contentPoint)
+        let frame = pinch.anchorIndex.flatMap(current.frame(of:))
+        if let frame {
+            pinch.anchorUnit = CGPoint(x: (contentPoint.x - frame.minX) / frame.width, y: (contentPoint.y - frame.minY) / frame.height)
+        }
+        // Where that photo is on screen now, to line it up on its cell in the next level.
+        pinch.anchorFrame = frame?.offsetBy(dx: 0, dy: -metrics.offsetY)
+    }
+
+    /// Works out the next level and where it would be scrolled to, with the anchor photo under the same point.
+    private func preparePreview(target: Int) -> Bool {
+        guard let anchorIndex = pinch.anchorIndex else { return false }
+        let next = layout(columns: target)
+        guard let anchorNext = next.frame(of: anchorIndex) else { return false }
+        // Scrolled so the photo under the fingers is under them there too, as far as the grid's ends allow.
+        let rest = anchorNext.minY + pinch.anchorUnit.y * anchorNext.height - pinch.anchorPoint.y
+        let insetBottom = metrics.viewportSize.height - metrics.visibleBottom
+        let maxOffset = max(next.height + insetBottom - metrics.viewportSize.height, metrics.minOffsetY)
+        pinch.previewLayout = next
+        pinch.previewOffset = min(max(rest, metrics.minOffsetY), maxOffset)
+        pinch.previewColumns = target
+        return true
+    }
+
+    /// Tapping the overview: the camera pushes in on the photo tapped, the photos around it sort into the level it
+    /// opens on, and the grid switches to that level, the photo still under the finger.
+    private func zoomIn(at point: CGPoint) {
+        guard !pinch.isActive, store.unlocksPro else { return }
+        pinch.isActive = true
+        pinch.isTracking = false
+        // The tapped photo lands on its own column, not the middle of the screen, so it stays under the finger.
+        pinch.anchorsOnSortedColumn = true
+        setAnchor(at: point)
+        guard preparePreview(target: GridZoom.overviewZoomColumns), let tiles = pinchTiles(target: GridZoom.overviewZoomColumns) else {
+            pinch.previewColumns = nil
+            pinch.previewLayout = nil
+            pinch.isActive = false
+            return
+        }
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) {
+            pinch.progress = 0
+            pinch.tiles = tiles
+            pinch.stage = .unsorted
+            pinch.hidesTiles = true
+        }
+        setSorting(true)
+        // A little longer than the sort, so the photos have settled into order when the grid takes over.
+        withAnimation(Self.tapZoomMotion) {
+            pinch.progress = 1
+        } completion: {
+            switchGrid(to: GridZoom.overviewZoomColumns)
+        }
+    }
+
+    private func zoomIn(toIndex index: Int) {
+        guard let frame = layout(columns: columns).frame(of: index) else { return }
+        zoomIn(at: CGPoint(x: frame.midX, y: frame.midY - metrics.offsetY))
+    }
+
     /// Lays the next level out (hidden) once the pinch heads there and puts the photos on its cells unsorted.
     private func applyPinch() {
         let looksLike = CGFloat(columns) / pinch.gestureScale
@@ -297,16 +365,7 @@ struct AssetGrid: View {
         let progress = GridZoom.progress(looksLike, from: columns, to: target)
         if pinch.previewColumns != target {
             restoreTiles()
-            guard progress > 0.05, let anchorIndex = pinch.anchorIndex else { return }
-            let next = layout(columns: target)
-            guard let anchorNext = next.frame(of: anchorIndex) else { return }
-            // Scrolled so the photo under the fingers is under them there too, as far as the grid's ends allow.
-            let rest = anchorNext.minY + pinch.anchorUnit.y * anchorNext.height - pinch.anchorPoint.y
-            let insetBottom = metrics.viewportSize.height - metrics.visibleBottom
-            let maxOffset = max(next.height + insetBottom - metrics.viewportSize.height, metrics.minOffsetY)
-            pinch.previewLayout = next
-            pinch.previewOffset = min(max(rest, metrics.minOffsetY), maxOffset)
-            pinch.previewColumns = target
+            guard progress > 0.05, preparePreview(target: target) else { return }
         }
         if pinch.tiles.isEmpty, !pinch.isRestoring, let tiles = pinchTiles(target: target) {
             var instant = Transaction()
@@ -417,7 +476,9 @@ struct AssetGrid: View {
         // The photos on screen keep their rows, in place: the photo under the fingers on the cell nearest where it
         // is, the rest on the cells as far from it as they were.
         // Each level adds (or drops) the same number of columns on either side, so zooming is even both ways.
-        let anchorUnsortedColumn = Int((anchorOld.minX / oldPitch).rounded()) + (target - columns) / 2
+        let anchorUnsortedColumn = pinch.anchorsOnSortedColumn
+            ? anchorColumn
+            : Int((anchorOld.minX / oldPitch).rounded()) + (target - columns) / 2
         let anchorUnsortedRow = Int(((anchorOld.minY - anchorTop) / pitch).rounded())
         // The camera starts close enough that the next level's cells look the size the grid's are, with the photo
         // under the fingers where it is, and pulls back (or pushes in) to the next level as the pinch goes on.
@@ -687,26 +748,46 @@ private struct GridRowView: View, Equatable {
     let slot: GridLayout.RowSlot
     let side: CGFloat
     let gutter: CGFloat
+    let isOverview: Bool
     let assets: PHFetchResult<PHAsset>
     let source: AssetSource
     let selection: SelectionModel
     let pinch: GridPinch
     let touch: GridTouch
+    let zoomIn: (Int) -> Void
 
     @Environment(Navigator.self) private var navigator
     @Environment(\.metro) private var metro
     @Environment(\.displayScale) private var displayScale
 
     nonisolated static func == (a: Self, b: Self) -> Bool {
-        a.slot == b.slot && a.side == b.side && a.assets === b.assets
+        a.slot == b.slot && a.side == b.side && a.isOverview == b.isOverview && a.assets === b.assets
     }
 
     var body: some View {
-        PlacedLayout(height: side) {
-            ForEach(slot.range, id: \.self) { index in
-                let column = index - slot.range.lowerBound
-                tile(index, column: column)
-                    .placed(CGRect(x: CGFloat(column) * (side + gutter), y: 0, width: side, height: side))
+        if isOverview {
+            // Snapshots only: no buttons, badges or per-photo page turn, so hundreds of them draw cheaply. The row
+            // turns as one, and is one element for VoiceOver.
+            PlacedLayout(height: side) {
+                ForEach(slot.range, id: \.self) { index in
+                    AssetThumbnail(asset: assets.object(at: index), pixelSide: side * displayScale, isSnapshot: true)
+                        .modifier(PinchHidesTile(pinch: pinch))
+                        .placed(CGRect(x: CGFloat(index - slot.range.lowerBound) * (side + gutter), y: 0, width: side, height: side))
+                }
+            }
+            .metroFeather(row: slot.row, hingeX: MetroMetrics.margin)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(slot.range.count) photos")
+            .accessibilityHint("Zooms in on them")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { zoomIn(slot.range.lowerBound) }
+        } else {
+            PlacedLayout(height: side) {
+                ForEach(slot.range, id: \.self) { index in
+                    let column = index - slot.range.lowerBound
+                    tile(index, column: column)
+                        .placed(CGRect(x: CGFloat(column) * (side + gutter), y: 0, width: side, height: side))
+                }
             }
         }
     }
@@ -773,15 +854,18 @@ struct SelectionBox: View {
 struct AssetThumbnail: View {
     let asset: PHAsset
     var pixelSide: CGFloat
+    /// Just the picture: no badges and no description of its own (the overview's row describes them).
+    var isSnapshot = false
 
     @State private var image: UIImage?
     @State private var loadedSide: CGFloat = 0
     @Environment(\.metro) private var metro
     @Environment(\.displayScale) private var displayScale
 
-    init(asset: PHAsset, pixelSide: CGFloat) {
+    init(asset: PHAsset, pixelSide: CGFloat, isSnapshot: Bool = false) {
         self.asset = asset
         self.pixelSide = pixelSide
+        self.isSnapshot = isSnapshot
         // Any size already loaded beats a blank square while the right one loads.
         _image = State(initialValue: ImageLoader.shared.cachedThumbnail(for: asset))
     }
@@ -791,7 +875,7 @@ struct AssetThumbnail: View {
         requestSides.first { $0 >= pixelSide } ?? pixelSide
     }
 
-    static let requestSides: [CGFloat] = [128, 256, 384, 512, 768, 1024, 1536]
+    static let requestSides: [CGFloat] = [72, 128, 256, 384, 512, 768, 1024, 1536]
 
     var body: some View {
         metro.chrome
@@ -834,7 +918,7 @@ struct AssetThumbnail: View {
                 }
             }
             .accessibilityElement()
-            .accessibilityLabel(asset.spokenDescription)
+            .accessibilityLabel(isSnapshot ? "" : asset.spokenDescription)
     }
 }
 
@@ -872,6 +956,8 @@ final class GridPinch {
     @ObservationIgnored var isSorted = false
     /// The fingers are down, and where the recognizer last had them, to carry on after a level change mid-pinch.
     @ObservationIgnored var isTracking = false
+    /// A tap's zoom puts the anchor photo on its own column rather than the middle, so it stays under the finger.
+    @ObservationIgnored var anchorsOnSortedColumn = false
     @ObservationIgnored var lastScale: CGFloat = 1
     @ObservationIgnored var lastCentroid: CGPoint = .zero
     /// How the pinch's photos are seen, from the grid as it was to the next level.
