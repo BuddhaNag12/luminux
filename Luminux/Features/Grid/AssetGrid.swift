@@ -595,6 +595,10 @@ struct AssetGrid: View {
                 // Drawn where the next level puts it (month titles shift rows off the even pitch), so handing over to
                 // the grid at the end moves nothing.
                 guard let index = sortedAt[GridCell(row: row, column: column)], let slot = sorted(index) else { continue }
+                // Zooming in shows fewer photos than are on screen: the ones there grow into their cells, and new
+                // ones from beyond (a narrow strip of the next level above and below, while the camera is far out)
+                // would only show until it pushes in.
+                if target < base, !shown.contains(index) { continue }
                 // Already on screen in the old block: its sorted place shows it only once the block sorts, so it's
                 // never drawn twice.
                 if shown.contains(index) {
