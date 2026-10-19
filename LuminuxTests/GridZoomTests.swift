@@ -4,8 +4,8 @@ import Testing
 
 struct GridZoomTests {
     @Test func levelsAddTheSameColumnsOnEitherSide() {
-        #expect(GridZoom.levels == [3, 5, 15])
-        for (fewer, more) in zip(GridZoom.levels, GridZoom.levels.dropFirst()) {
+        #expect(GridZoom.levels == [2, 3, 5, 7, 15])
+        for (fewer, more) in zip(GridZoom.levels.dropFirst(), GridZoom.levels.dropFirst(2)) {
             #expect((more - fewer) % 2 == 0)
         }
     }
@@ -13,9 +13,11 @@ struct GridZoomTests {
     @Test func aPinchHeadsToTheNextLevelEitherWay() {
         // 5 columns drawn at 1.4× look like 3.6 columns.
         #expect(GridZoom.level(toward: 5 / 1.4, from: 5) == 3)
-        #expect(GridZoom.level(toward: 5 / 0.7, from: 5) == 15)
+        #expect(GridZoom.level(toward: 5 / 0.7, from: 5) == 7)
+        #expect(GridZoom.level(toward: 7 / 0.7, from: 7) == 15)
         #expect(GridZoom.level(toward: 5, from: 5) == nil)
-        #expect(GridZoom.level(toward: 2, from: 3) == nil)
+        #expect(GridZoom.level(toward: 2, from: 3) == 2)
+        #expect(GridZoom.level(toward: 1, from: 2) == nil)
         #expect(GridZoom.level(toward: 20, from: 15) == nil)
     }
 
@@ -30,24 +32,33 @@ struct GridZoomTests {
 
     @Test func savedColumnCountsSnapToALevel() {
         #expect(GridZoom.nearestLevel(to: 4) == 3)
-        #expect(GridZoom.nearestLevel(to: 8) == 5)
+        #expect(GridZoom.nearestLevel(to: 8) == 7)
         #expect(GridZoom.nearestLevel(to: 20) == 15)
     }
 
     @Test func onePinchCanGoThroughEveryLevel() {
-        // From 3, the grid follows the fingers all the way to 15 columns, and from 15 back to 3.
-        let fromFewest = GridZoom.scaleLimits(for: 3)
-        #expect(abs(fromFewest.lowerBound - 3.0 / 15) < 0.001 && fromFewest.upperBound == 1)
+        // From 2, the grid follows the fingers all the way to 15 columns, and from 15 back to 2.
+        let fromFewest = GridZoom.scaleLimits(for: 2)
+        #expect(abs(fromFewest.lowerBound - 2.0 / 15) < 0.001 && fromFewest.upperBound == 1)
         #expect(GridZoom.rubberBand(0.3, limits: fromFewest) == 0.3)
         let fromMost = GridZoom.scaleLimits(for: 15)
-        #expect(fromMost.lowerBound == 1 && fromMost.upperBound == 5)
+        #expect(fromMost.lowerBound == 1 && fromMost.upperBound == 7.5)
     }
 
     @Test func pastTheEndLevelsTheGridResists() {
-        let stretched = GridZoom.rubberBand(2, limits: GridZoom.scaleLimits(for: 3))
+        let stretched = GridZoom.rubberBand(2, limits: GridZoom.scaleLimits(for: 2))
         #expect(stretched > 1 && stretched < 1.5)
         let squeezed = GridZoom.rubberBand(0.5, limits: GridZoom.scaleLimits(for: 15))
         #expect(squeezed < 1 && squeezed > 0.8)
+    }
+
+    @Test func theSmallestPhotosCantBeSelected() {
+        #expect(GridZoom.allowsSelection(columns: 7))
+        #expect(!GridZoom.allowsSelection(columns: 15))
+        let selection = SelectionModel()
+        selection.isAllowed = false
+        selection.begin(with: "a")
+        #expect(!selection.isActive && selection.selectedIDs.isEmpty)
     }
 
     // 4 columns of 96 with a 4 gap make a 396 wide grid: pitch 100.

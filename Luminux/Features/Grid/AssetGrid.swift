@@ -5,6 +5,8 @@ import SwiftUI
 final class SelectionModel {
     var isActive = false
     var selectedIDs: Set<String> = []
+    /// Off while the grid is at its smallest photos (see `GridZoom.allowsSelection`); pages hide their select button.
+    var isAllowed = true
 
     func toggle(_ id: String) {
         if selectedIDs.contains(id) {
@@ -15,6 +17,7 @@ final class SelectionModel {
     }
 
     func begin(with id: String? = nil) {
+        guard isAllowed else { return }
         selectedIDs = id.map { [$0] } ?? []
         withAnimation(MetroMotion.standard) { isActive = true }
     }
@@ -179,6 +182,10 @@ struct AssetGrid: View {
             .sensoryFeedback(.selection, trigger: touch.longPressedID) { _, new in new != nil }
             .sensoryFeedback(.selection, trigger: swipe?.current)
             .sensoryFeedback(.impact(weight: .light), trigger: columns)
+            .onChange(of: columns, initial: true) { _, columns in
+                selection.isAllowed = GridZoom.allowsSelection(columns: columns)
+                if !selection.isAllowed, selection.isActive { selection.end() }
+            }
             .onChange(of: jumpTarget) { _, target in
                 guard let target else { return }
                 if let position = sections?.firstIndex(where: { $0.id == target }), let top = layout.headerTop(ofSectionAt: position) {

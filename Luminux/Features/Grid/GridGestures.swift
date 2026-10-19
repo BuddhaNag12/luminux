@@ -3,8 +3,11 @@ import UIKit
 
 /// The photo grid's zoom levels, like Photos: pinch out for bigger photos, in for more of them.
 nonisolated enum GridZoom {
-    /// Odd counts, so each level is the one before with the same number of columns added on either side.
-    static let levels = [3, 5, 15]
+    /// From 3 up, odd counts, so each level is the one before with the same number of columns added on either side.
+    static let levels = [2, 3, 5, 7, 15]
+
+    /// The smallest photos are for finding your place, not for acting on: no selecting there.
+    static func allowsSelection(columns: Int) -> Bool { columns < levels.last! }
     static let defaultColumns = 5
 
     static func nearestLevel(to columns: Int) -> Int {
