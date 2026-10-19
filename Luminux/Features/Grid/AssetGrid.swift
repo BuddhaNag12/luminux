@@ -514,9 +514,6 @@ struct AssetGrid: View {
         let anchorColumn = Int((anchorNew.minX / pitch).rounded())
         let screen = CGRect(origin: .zero, size: viewport)
 
-        func cell(_ row: Int, _ column: Int) -> CGRect {
-            CGRect(x: CGFloat(column) * pitch, y: anchorTop + CGFloat(row) * pitch, width: side, height: side)
-        }
         /// Where a photo sits sorted, on screen.
         func sorted(_ index: Int) -> CGRect? {
             next.frame(of: index)?.offsetBy(dx: 0, dy: -previewOffset)
@@ -532,30 +529,48 @@ struct AssetGrid: View {
         let anchorUnsortedColumn = pinch.anchorsOnSortedColumn
             ? anchorColumn
             : Int((anchorOld.minX / oldPitch).rounded()) + (target - base) / 2
-        let anchorUnsortedRow = Int(((anchorOld.minY - anchorTop) / pitch).rounded())
+        // Each photo keeps its row in its own month, the month lined up with where it'll be: the one under the
+        // fingers on that photo's row, those above on their last row, those below on their first. Counting rows
+        // across a month title (hidden while pinching) put a month's first row in the next level's title space.
+        guard let anchorPlace = current.placeInSection(of: anchorIndex), let anchorSortedPlace = next.placeInSection(of: anchorIndex),
+              let anchorUnsorted = next.frame(inSectionOf: anchorIndex, row: anchorSortedPlace.row, column: anchorUnsortedColumn)?
+                .offsetBy(dx: 0, dy: -previewOffset) else { return nil }
+        let columnShift = anchorUnsortedColumn - anchorPlace.column
+        func rowShift(_ index: Int) -> Int {
+            if current.isSameSection(index, anchorIndex) { return anchorSortedPlace.row - anchorPlace.row }
+            guard index < anchorIndex else { return 0 }
+            return (next.rowCount(inSectionOf: index) ?? 0) - (current.rowCount(inSectionOf: index) ?? 0)
+        }
         // The camera starts close enough that the next level's cells look the size the grid's are, with the photo
         // under the fingers where it is, and pulls back (or pushes in) to the next level as the pinch goes on.
         pinch.camera = PinchCamera(
             // Centres, since photos are drawn around their cells' centres.
             from: CGPoint(x: anchorOld.midX, y: anchorOld.midY),
-            to: CGPoint(x: cell(anchorUnsortedRow, anchorUnsortedColumn).midX, y: cell(anchorUnsortedRow, anchorUnsortedColumn).midY),
+            to: CGPoint(x: anchorUnsorted.midX, y: anchorUnsorted.midY),
             startScale: oldPitch / pitch,
             startSide: baseSide
         )
         for index in current.indices(in: screen.offsetBy(dx: 0, dy: pinch.baseOffset)) where index < assetCount {
-            guard let now = current.frame(of: index)?.offsetBy(dx: 0, dy: -pinch.baseOffset) else { continue }
-            let column = anchorUnsortedColumn + Int(((now.minX - anchorOld.minX) / oldPitch).rounded())
-            let row = anchorUnsortedRow + Int(((now.minY - anchorOld.minY) / oldPitch).rounded())
-            guard taken.insert(GridCell(row: row, column: column)).inserted else { continue }
+            guard let now = current.frame(of: index)?.offsetBy(dx: 0, dy: -pinch.baseOffset),
+                  let place = current.placeInSection(of: index) else { continue }
+            let column = place.column + columnShift
+            guard let unsorted = next.frame(inSectionOf: index, row: place.row + rowShift(index), column: column)?
+                .offsetBy(dx: 0, dy: -previewOffset) else { continue }
+            let spot = GridCell(row: Int(((unsorted.minY - anchorTop) / pitch).rounded()), column: column)
+            guard taken.insert(spot).inserted else { continue }
             shown.insert(index)
-            spots[index] = GridCell(row: row, column: column)
-            // Drawn exactly where the camera's start shows it as it was (month titles break the even rows), so the
-            // pinch begins without anything moving; its cell above is for working out what's around it.
+            spots[index] = spot
+            // Starts exactly where the camera's start shows it as it was, so the pinch begins without anything
+            // moving, and settles onto its cell as the pinch goes on.
             let center = CGPoint(
                 x: pinch.camera.to.x + (now.midX - pinch.camera.from.x) / pinch.camera.startScale,
                 y: pinch.camera.to.y + (now.midY - pinch.camera.from.y) / pinch.camera.startScale
             )
-            tiles.append(PinchTile(index: index, kind: .shown, unsorted: CGRect(x: center.x - side / 2, y: center.y - side / 2, width: side, height: side)))
+            let start = CGRect(x: center.x - side / 2, y: center.y - side / 2, width: side, height: side)
+            // The month under the fingers sorts as one block; others cross-fade to where they'll be as the camera
+            // moves, since the widening about the fingers moves their sorted places.
+            let kind: PinchTile.Kind = current.isSameSection(index, anchorIndex) ? .shown : .moving
+            tiles.append(PinchTile(index: index, kind: kind, unsorted: unsorted, start: start))
         }
 
         // The cells around them are already sorted: each shows the photo the next level puts there, so letting go
@@ -580,6 +595,12 @@ struct AssetGrid: View {
                 // Drawn where the next level puts it (month titles shift rows off the even pitch), so handing over to
                 // the grid at the end moves nothing.
                 guard let index = sortedAt[GridCell(row: row, column: column)], let slot = sorted(index) else { continue }
+                // Already on screen in the old block: its sorted place shows it only once the block sorts, so it's
+                // never drawn twice.
+                if shown.contains(index) {
+                    fillers.append(PinchTile(index: index, kind: current.isSameSection(index, anchorIndex) ? .sortedMiddle : .arriving, unsorted: slot))
+                    continue
+                }
                 // Most come in from beyond the edges as the camera pulls back; one that starts already on screen,
                 // where the grid had no photo (its month title), fades in instead of popping up.
                 let center = CGPoint(
@@ -594,14 +615,15 @@ struct AssetGrid: View {
         }
         // Under the old photos, each middle cell's sorted photo, for the middle block's change into order.
         let underneath = taken.compactMap { spot in
-            sortedAt[spot].flatMap { index in sorted(index).map { PinchTile(index: index, kind: .sortedMiddle, unsorted: $0) } }
+            sortedAt[spot].flatMap { index in
+                sorted(index).map { PinchTile(index: index, kind: current.isSameSection(index, anchorIndex) ? .sortedMiddle : .arriving, unsorted: $0) }
+            }
         }
-        // An old photo with no sorted one under it (beyond the next level's columns) stays as it is until the camera
-        // moves it off screen, rather than fading to nothing.
+        // An old photo beyond the next level's columns has no sorted photo under it: it stays as it is until the
+        // camera moves it off screen, rather than fading to nothing. Inside them it fades with the rest of its block.
         let old = tiles.map { tile in
-            spots[tile.index].flatMap { sortedAt[$0] } == nil
-                ? PinchTile(index: tile.index, kind: .edge, unsorted: tile.unsorted)
-                : tile
+            guard tile.kind == .shown, let spot = spots[tile.index], spot.column < 0 || spot.column >= target else { return tile }
+            return PinchTile(index: tile.index, kind: .edge, unsorted: tile.unsorted, start: tile.start)
         }
         // Under the old photos, which cover them until they've shrunk out of the way.
         return fillers + underneath + old
@@ -1103,14 +1125,29 @@ struct PinchTile: Identifiable {
         case sortedMiddle
         /// On screen before the pinch, in a cell with no sorted photo: it stays until it's off screen.
         case edge
+        /// On screen before the pinch in another month than the photo under the fingers: fades out as it's zoomed.
+        case moving
+        /// A sorted photo in another month than the photo under the fingers: fades in as it's zoomed.
+        case arriving
     }
 
     let index: Int
     let kind: Kind
     let unsorted: CGRect
+    /// Where it starts, if not on its cell: a photo that was on screen, exactly where it was.
+    var start: CGRect?
+
+    func frame(at progress: CGFloat) -> CGRect {
+        guard let start else { return unsorted }
+        let t = min(max(progress, 0), 1)
+        return CGRect(
+            x: start.minX + (unsorted.minX - start.minX) * t, y: start.minY + (unsorted.minY - start.minY) * t,
+            width: unsorted.width, height: unsorted.height
+        )
+    }
 
     /// A photo can show twice for a moment: unsorted in the old block and sorted in a cell around it.
-    var id: String { "\(kind == .edge ? .shown : kind)-\(index)" }
+    var id: String { "\(kind == .edge || kind == .moving ? .shown : kind)-\(index)" }
 
     /// The photos around stay as they are (those appearing on screen fade in over the first part of the pinch);
     /// the middle block's old photos fade out over its sorted ones as `sortedness` goes to 1. Once the grid has
@@ -1123,6 +1160,8 @@ struct PinchTile: Identifiable {
         case .sortedMiddle: return sortedness > 0 ? 1 : 0
         case .appearing: return min(progress * 3, 1)
         case .filler, .edge: return 1
+        case .moving: return 1 - progress
+        case .arriving: return progress
         }
     }
 }
@@ -1169,7 +1208,7 @@ private struct PinchTileLayer: View {
         ZStack(alignment: .topLeading) {
             let side = camera.drawnSide(pinch.tiles.first?.unsorted.width ?? 0, at: pinch.progress)
             ForEach(pinch.tiles) { tile in
-                let frame = tile.unsorted
+                let frame = tile.frame(at: pinch.progress)
                 AssetThumbnail(asset: assets.object(at: tile.index), pixelSide: frame.width * max(camera.startScale, 1) * displayScale)
                     .frame(width: side, height: side)
                     .offset(x: frame.midX - side / 2, y: frame.midY - side / 2)

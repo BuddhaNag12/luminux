@@ -131,6 +131,26 @@ nonisolated struct GridLayout: Equatable {
         return CGRect(x: CGFloat(offset % columns) * pitch, y: rowsTop(section) + CGFloat(offset / columns) * pitch, width: side, height: side)
     }
 
+    /// A photo's row and column within its month.
+    func placeInSection(of index: Int) -> (row: Int, column: Int)? {
+        guard let section = section(of: index) else { return nil }
+        let offset = index - section.range.lowerBound
+        return (offset / columns, offset % columns)
+    }
+
+    /// How many rows the month holding `index` takes, and whether `b` is in the same month as `a`.
+    func rowCount(inSectionOf index: Int) -> Int? { section(of: index)?.rows }
+
+    func isSameSection(_ a: Int, _ b: Int) -> Bool {
+        section(of: a)?.range == section(of: b)?.range
+    }
+
+    /// The cell at `row` and `column` of the month holding `index`; either may lie outside the month's photos.
+    func frame(inSectionOf index: Int, row: Int, column: Int) -> CGRect? {
+        guard let section = section(of: index) else { return nil }
+        return CGRect(x: CGFloat(column) * pitch, y: rowsTop(section) + CGFloat(row) * pitch, width: side, height: side)
+    }
+
     /// The column and stagger row of a photo, for the page turn.
     func cell(of index: Int) -> (row: Int, column: Int)? {
         guard let section = section(of: index) else { return nil }
