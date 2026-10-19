@@ -7,7 +7,9 @@ nonisolated final class ImageLoader: @unchecked Sendable {
     static let shared = ImageLoader()
 
     private let manager = PHCachingImageManager()
-    private let decodeQueue = DispatchQueue(label: "com.buddhanag.luminux.decode", qos: .userInitiated)
+    /// Decoding runs side by side across photos (a 15-column screen is hundreds of them); each request still gets its
+    /// own serial queue on top, so its quick low-quality image stays ahead of its final one.
+    private let decodeQueue = DispatchQueue(label: "com.buddhanag.luminux.decode", qos: .userInitiated, attributes: .concurrent)
     /// Decoded grid thumbnails, so a tile that appears again (a new zoom level, a pinch's preview, scrolling back)
     /// shows its photo on its first frame instead of a blank square while it loads.
     private let thumbnails: NSCache<NSString, UIImage> = {
@@ -37,12 +39,11 @@ nonisolated final class ImageLoader: @unchecked Sendable {
             options.deliveryMode = .opportunistic
             options.resizeMode = .fast
             options.isNetworkAccessAllowed = true
-            let decodeQueue = decodeQueue
+            let decodeQueue = DispatchQueue(label: "com.buddhanag.luminux.decode.request", target: decodeQueue)
             let request = manager.requestImage(for: asset, targetSize: targetSize, contentMode: contentMode, options: options) { @Sendable image, info in
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
                 let failed = info?[PHImageErrorKey] != nil || (info?[PHImageCancelledKey] as? Bool) == true
                 // Decode before the view sees it; otherwise the first draw decodes on the main thread and stalls animations.
-                // The serial queue keeps the quick low-quality image ahead of the final one.
                 decodeQueue.async {
                     if let image { continuation.yield(image.preparingForDisplay() ?? image) }
                     if !isDegraded || failed { continuation.finish() }

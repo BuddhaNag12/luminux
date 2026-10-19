@@ -50,24 +50,49 @@ struct GridZoomTests {
         #expect(squeezed < 1 && squeezed > 0.8)
     }
 
-    @Test func aPinchBetweenPhotosAnchorsOnTheNearestOne() {
-        let frames = TileFrames()
-        let screen = CGRect(x: 0, y: 0, width: 400, height: 800)
-        frames.set(CGRect(x: 0, y: 48, width: 60, height: 60), for: 0, columns: 6)
-        frames.set(CGRect(x: 64, y: 48, width: 60, height: 60), for: 1, columns: 6)
-        // In the gutter, nearer the second photo; above the first row, over the month header.
-        #expect(frames.index(at: CGPoint(x: 62.5, y: 70), columns: 6) == nil)
-        #expect(frames.index(nearest: CGPoint(x: 62.5, y: 70), columns: 6, within: screen) == 1)
-        #expect(frames.index(nearest: CGPoint(x: 10, y: 20), columns: 6, within: screen) == 0)
+    // 4 columns of 96 with a 4 gap make a 396 wide grid: pitch 100.
+    private let layout = GridLayout(columns: 4, width: 396, gutter: 4, sections: [0..<6, 6..<7], count: 7)
+
+    @Test func photosSitUnderTheirMonthTitleRowByRow() {
+        #expect(layout.side == 96)
+        // First month: title 44 + gap 4, then two rows.
+        #expect(layout.frame(of: 0) == CGRect(x: 0, y: 48, width: 96, height: 96))
+        #expect(layout.frame(of: 5) == CGRect(x: 100, y: 148, width: 96, height: 96))
+        // Second month starts after two rows: 48 + 200, its title, then its photo.
+        #expect(layout.headerTop(ofSectionAt: 1) == 248)
+        #expect(layout.frame(of: 6) == CGRect(x: 0, y: 296, width: 96, height: 96))
+        #expect(layout.frame(of: 7) == nil)
+        #expect(layout.height == 296 + 96 + GridLayout.bottomPadding)
     }
 
-    @Test func framesFromAnotherLevelOrOffScreenAreIgnored() {
-        let frames = TileFrames()
-        let screen = CGRect(x: 0, y: 0, width: 400, height: 800)
-        frames.set(CGRect(x: 0, y: 48, width: 90, height: 90), for: 0, columns: 4)
-        frames.set(CGRect(x: 0, y: 5000, width: 60, height: 60), for: 7, columns: 6)
-        #expect(frames.frame(of: 0, columns: 6) == nil)
-        #expect(frames.index(nearest: CGPoint(x: 10, y: 60), columns: 6, within: screen) == nil)
-        #expect(frames.index(nearest: CGPoint(x: 10, y: 60), columns: 4, within: screen) == 0)
+    @Test func aPointFindsItsPhotoAndTheNearestOneOffAPhoto() {
+        #expect(layout.index(at: CGPoint(x: 150, y: 60)) == 1)
+        // In a gap, over a title, past the last photo of a row.
+        #expect(layout.index(at: CGPoint(x: 98, y: 60)) == nil)
+        #expect(layout.index(at: CGPoint(x: 10, y: 20)) == nil)
+        #expect(layout.index(at: CGPoint(x: 350, y: 160)) == nil)
+        #expect(layout.index(nearest: CGPoint(x: 98, y: 60)) == 0)
+        #expect(layout.index(nearest: CGPoint(x: 10, y: 20)) == 0)
+        #expect(layout.index(nearest: CGPoint(x: 350, y: 160)) == 5)
+    }
+
+    @Test func onlyWhatMeetsARectIsDrawn() {
+        #expect(layout.indices(in: CGRect(x: 0, y: 0, width: 396, height: 100)) == [0, 1, 2, 3])
+        #expect(layout.indices(in: CGRect(x: 0, y: 150, width: 396, height: 200)) == [4, 5, 6])
+        #expect(layout.headers(in: CGRect(x: 0, y: 150, width: 396, height: 200)).map(\.position) == [1])
+    }
+
+    @Test func staggerRowsCountMonthTitles() {
+        #expect(layout.cell(of: 0)! == (1, 0))
+        #expect(layout.cell(of: 5)! == (2, 1))
+        // Title row 3, photos row 4.
+        #expect(layout.cell(of: 6)! == (4, 0))
+        #expect(layout.row(atY: 300) == 4)
+    }
+
+    @Test func withoutMonthsThePhotosStartAtTheTop() {
+        let plain = GridLayout(columns: 3, width: 308, gutter: 4, sections: nil, count: 4)
+        #expect(plain.frame(of: 3) == CGRect(x: 0, y: 104, width: 100, height: 100))
+        #expect(plain.headers(in: CGRect(x: 0, y: 0, width: 308, height: 1000)).isEmpty)
     }
 }
