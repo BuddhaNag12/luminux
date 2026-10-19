@@ -169,9 +169,6 @@ struct AssetGrid: View {
             // The pinch moves the grid itself; the scroll view would otherwise pan it too.
             .scrollDisabled(pinch.isActive)
             .modifier(GridPinchTransform(pinch: pinch))
-            .background {
-                PinchPreviewLayer(pinch: pinch, sections: sections, viewportHeight: viewportHeight)
-            }
             .overlay {
                 PinchTileLayer(pinch: pinch, assets: assets)
             }
@@ -196,7 +193,8 @@ struct AssetGrid: View {
             })
             .sensoryFeedback(.selection, trigger: touch.longPressedID) { _, new in new != nil }
             .sensoryFeedback(.selection, trigger: swipe?.current)
-            .sensoryFeedback(.impact(weight: .light), trigger: columns)
+            // Once the grid has settled at its new level after the fingers lift, not at each level a pinch passes.
+            .sensoryFeedback(.impact(weight: .light), trigger: pinch.settledLevels)
             .onChange(of: columns, initial: true) { _, columns in
                 selection.isAllowed = GridZoom.allowsSelection(columns: columns)
                 if !selection.isAllowed, selection.isActive { selection.end() }
@@ -414,16 +412,15 @@ struct AssetGrid: View {
     /// from there, so one pinch can go 3 → 5 → 15 without stopping. The grid underneath stays as it was until the
     /// fingers lift: laying it out again mid-pinch cost frames and showed it for one.
     private func carryOn(looksLike: CGFloat, target: Int) {
-        guard pinch.isTracking, pinch.isSorted, pinch.progress >= 1, pinch.swap == nil,
+        guard pinch.isTracking, pinch.progress >= 1, pinch.swap == nil,
               let beyond = GridZoom.level(toward: looksLike, from: target), (beyond > target) == (target > base) else { return }
         var instant = Transaction()
         instant.disablesAnimations = true
-        // How far the fingers have already gone toward the next level, while this one finished sorting.
+        // Straight on, without waiting for this level's sort to finish: the camera never stops with the fingers.
         let carried = GridZoom.progress(looksLike, from: target, to: beyond)
         withTransaction(instant) {
             pinch.baseColumns = target
             pinch.baseOffset = pinch.previewOffset
-            pinch.baseLayout = pinch.previewLayout
             pinch.isRebased = target != columns
             resetTiles()
             // Measured from here on so the grid looks like as many columns as the fingers say, not where they were
@@ -435,14 +432,11 @@ struct AssetGrid: View {
             setAnchor(at: pinch.lastCentroid)
             // At the new level's start the camera shows it exactly as the last one ended.
             if preparePreview(target: beyond), let tiles = pinchTiles(target: beyond) {
-                pinch.progress = 0
+                pinch.progress = carried
                 pinch.tiles = tiles
                 pinch.stage = .unsorted
             }
         }
-        // Then catches up with them.
-        guard carried > 0 else { return }
-        withAnimation(Self.resizeMotion) { pinch.progress = carried }
         applyPinch()
     }
 
@@ -673,12 +667,12 @@ struct AssetGrid: View {
             pinch.previewColumns = nil
             pinch.previewLayout = nil
             pinch.isRebased = false
-            pinch.baseLayout = nil
             if pinch.isTracking {
                 // Switched mid-pinch: start over from the new level, from where the fingers are now.
                 pinchChanged(.began, scale: pinch.lastScale, velocity: 0, centroid: pinch.lastCentroid)
             } else {
                 pinch.isActive = false
+                pinch.settledLevels += 1
             }
         }
     }
@@ -1030,10 +1024,9 @@ final class GridPinch {
     @ObservationIgnored var isSorted = false
     /// The fingers are down, and where the recognizer last had them, to carry on after a level change mid-pinch.
     @ObservationIgnored var isTracking = false
-    /// The level the pinch is working from, that level's scroll offset and layout; see `AssetGrid.base`.
+    /// The level the pinch is working from and that level's scroll offset; see `AssetGrid.base`.
     @ObservationIgnored var baseColumns = GridZoom.defaultColumns
     @ObservationIgnored var baseOffset: CGFloat = 0
-    @ObservationIgnored var baseLayout: GridLayout?
     /// A tap's zoom puts the anchor photo on its own column rather than the middle, so it stays under the finger.
     @ObservationIgnored var anchorsOnSortedColumn = false
     @ObservationIgnored var lastScale: CGFloat = 1
@@ -1046,6 +1039,8 @@ final class GridPinch {
     var isActive = false
     /// The pinch carried on past the grid's own level: the grid underneath is out of date until the fingers lift.
     var isRebased = false
+    /// Counts the times a pinch has settled the grid at a new level.
+    var settledLevels = 0
 
     @ObservationIgnored var limits: ClosedRange<CGFloat> = 1...1
     /// The recognizer's scale when the pinch began, and the pinch since then, rubber-banded past the next levels.
@@ -1078,47 +1073,8 @@ private struct GridPinchTransform: ViewModifier {
         content
             .scaleEffect(pinch.scale, anchor: .topLeading)
             .offset(pinch.offset)
-            // While its photos hide, only its month titles show, giving way to the next level's.
-            .opacity(pinch.isRebased ? 0 : pinch.hidesTiles ? 1 - pinch.progress : 1)
-    }
-}
-
-/// The next level's month titles while a pinch heads there, fading in as the grid's fade out; its photos are the tile
-/// layer's.
-private struct PinchPreviewLayer: View {
-    let pinch: GridPinch
-    let sections: [MonthSection]?
-    let viewportHeight: CGFloat
-
-    var body: some View {
-        if let sections {
-            ZStack(alignment: .topLeading) {
-                // Carried on past the grid's own level, the level the pinch is working from has no grid under it to
-                // show its titles; they fade out here instead.
-                if pinch.isRebased, let base = pinch.baseLayout {
-                    titles(base, offset: pinch.baseOffset, sections: sections)
-                        .opacity(1 - pinch.progress)
-                }
-                if pinch.previewColumns != nil, let next = pinch.previewLayout {
-                    titles(next, offset: pinch.previewOffset, sections: sections)
-                        .opacity(pinch.progress)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-        }
-    }
-
-    private func titles(_ layout: GridLayout, offset: CGFloat, sections: [MonthSection]) -> some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(layout.headers(in: CGRect(x: 0, y: offset, width: .greatestFiniteMagnitude, height: viewportHeight)), id: \.position) { slot in
-                MonthTitle(section: sections[slot.position])
-                    .frame(width: slot.frame.width, height: slot.frame.height)
-                    .offset(y: slot.frame.minY - offset)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // Its photos are the pinch's while it runs; its month titles hide until the pinch is done.
+            .opacity(pinch.hidesTiles || pinch.isRebased ? 0 : 1)
     }
 }
 
