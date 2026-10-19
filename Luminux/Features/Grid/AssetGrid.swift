@@ -786,7 +786,8 @@ struct AssetGrid: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(onHeaderTap == nil)
+            // In the overview a tap anywhere zooms in, a month title's included, rather than opening the month list.
+            .disabled(onHeaderTap == nil || isOverview)
             .accessibilityAddTraits(.isHeader)
             .accessibilityHint(onHeaderTap == nil ? "" : "Shows all months")
 
