@@ -254,7 +254,9 @@ struct AssetGrid: View {
     /// The camera's quick return when the pinch turns back before the next level.
     private static let resizeMotion = Animation.spring(response: 0.25, dampingFraction: 1)
     /// The middle block's change into order (or back), a dissolve with a fade, on its own clock.
-    private static let sortMotion = Animation.easeInOut(duration: 0.5)
+    private static let sortDuration = 0.5
+    private static let sortMotion = Animation.easeInOut(duration: sortDuration)
+    private static let catchUpMotion = Animation.interactiveSpring(response: 0.2, dampingFraction: 1)
     private static let tapZoomMotion = Animation.easeInOut(duration: 0.6)
     /// How far the pinch goes toward the next level before the middle block changes into its order, and back.
     /// Zooming in, it starts almost at once, so it's done before the photos around leave the screen.
@@ -373,6 +375,7 @@ struct AssetGrid: View {
             return
         }
         let progress = GridZoom.progress(looksLike, from: base, to: target)
+        let catchesUp = CACurrentMediaTime() < pinch.catchesUpUntil
         if pinch.previewColumns != target {
             if pinch.isRebased {
                 // Turned the other way: start toward that level at once; near the base level both look the same.
@@ -381,22 +384,30 @@ struct AssetGrid: View {
                 withTransaction(instant) { resetTiles() }
                 guard preparePreview(target: target) else { return }
             } else {
-                restoreTiles()
-                guard progress > 0.05, preparePreview(target: target) else { return }
+                turnBack()
+                guard !pinch.isRestoring, progress > 0.05, preparePreview(target: target) else { return }
             }
+        } else if pinch.isRestoring {
+            // The photos are still on their way back; moving them on now would undo that halfway and pop.
+            return
         }
-        if pinch.tiles.isEmpty, !pinch.isRestoring, let tiles = pinchTiles(target: target) {
+        if pinch.tiles.isEmpty, let tiles = pinchTiles(target: target) {
             var instant = Transaction()
             instant.disablesAnimations = true
             // Seen through the camera at the pinch's start, they look just as the grid did; nothing jumps.
             withTransaction(instant) {
-                pinch.progress = progress
+                pinch.progress = catchesUp ? 0 : progress
                 pinch.tiles = tiles
                 pinch.stage = .unsorted
                 pinch.hidesTiles = true
             }
         }
-        pinch.progress = progress
+        if catchesUp {
+            // Back from an animated return the fingers have moved on; the photos glide after them instead of jumping.
+            withAnimation(Self.catchUpMotion) { pinch.progress = progress }
+        } else {
+            pinch.progress = progress
+        }
         // Once the camera has pulled back far enough for the photos around to show, the middle block changes into
         // order on its own; back short of that, it changes back. The gap between the two keeps it from flickering.
         let zoomsIn = target < base
@@ -454,6 +465,7 @@ struct AssetGrid: View {
     private func setSorting(_ sorting: Bool) {
         pinch.isSorting = sorting
         pinch.isSorted = false
+        pinch.sortSettlesAt = CACurrentMediaTime() + Self.sortDuration
         withAnimation(Self.sortMotion) {
             pinch.sortedness = sorting ? 1 : 0
         } completion: {
@@ -463,6 +475,16 @@ struct AssetGrid: View {
             if let target = pinch.previewColumns {
                 carryOn(looksLike: CGFloat(base) / pinch.gestureScale, target: target)
             }
+        }
+    }
+
+    /// Turned back past the grid's own level. Near it the photos look just like the grid, so they go at once and the
+    /// other way starts on the same frame; only a block still changing order, or one far out, takes the animated way.
+    private func turnBack() {
+        if !pinch.isRestoring, pinch.progress < 0.25, !pinch.isSorting, CACurrentMediaTime() >= pinch.sortSettlesAt {
+            clearTiles()
+        } else {
+            restoreTiles()
         }
     }
 
@@ -480,7 +502,16 @@ struct AssetGrid: View {
             pinch.sortedness = 0
         } completion: {
             clearTiles()
+            resumeTracking()
         }
+    }
+
+    /// Pinched again while the photos were going back: carry on from where the fingers are now, without waiting for
+    /// them to move.
+    private func resumeTracking() {
+        guard pinch.isTracking else { return }
+        pinch.catchesUpUntil = CACurrentMediaTime() + 0.25
+        applyPinch()
     }
 
     private func clearTiles() {
@@ -723,7 +754,8 @@ struct AssetGrid: View {
             clearTiles()
             pinch.previewColumns = nil
             pinch.previewLayout = nil
-            pinch.isActive = false
+            pinch.isActive = pinch.isTracking
+            resumeTracking()
         }
     }
 
@@ -1051,6 +1083,10 @@ final class GridPinch {
     /// The middle block is changing into order (or has), rather than back; and has finished doing so.
     @ObservationIgnored var isSorting = false
     @ObservationIgnored var isSorted = false
+    /// When the middle block's last change of order (either way) ends.
+    @ObservationIgnored var sortSettlesAt: CFTimeInterval = 0
+    /// Until when the pinch eases the photos after the fingers rather than setting them, after an animated return.
+    @ObservationIgnored var catchesUpUntil: CFTimeInterval = 0
     /// The fingers are down, and where the recognizer last had them, to carry on after a level change mid-pinch.
     @ObservationIgnored var isTracking = false
     /// The level the pinch is working from and that level's scroll offset; see `AssetGrid.base`.
