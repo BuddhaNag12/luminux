@@ -4,6 +4,14 @@ A tile-based photo gallery for iPhone, built on the photos already in your libra
 
 Luminux is inspired by the Windows Phone 8.1 Photos hub. It isn't affiliated with or endorsed by Microsoft or Nokia.
 
+<p>
+  <img src="docs/screenshots/hub.jpg" width="19%" alt="The photos hub: live tiles for camera roll, albums, date, favorites and places over a photo background">
+  <img src="docs/screenshots/grid.jpg" width="19%" alt="All photos in a five-column grid, grouped by month">
+  <img src="docs/screenshots/viewer.jpg" width="19%" alt="A photo open in the viewer with the app bar">
+  <img src="docs/screenshots/details.jpg" width="19%" alt="The details panel swiped up under a photo">
+  <img src="docs/screenshots/light-theme.jpg" width="19%" alt="The hub in the white theme with a magenta accent">
+</p>
+
 ## Features
 
 **Browsing**
@@ -80,6 +88,7 @@ LuminuxTests/     Unit tests (Swift Testing)
 
 - [Selawik](https://github.com/microsoft/Selawik) by Microsoft, licensed under the SIL Open Font License 1.1 (see `Luminux/Resources/Fonts/Selawik-OFL.txt`)
 - Icons are [SF Symbols](https://developer.apple.com/sf-symbols/)
+- Photos in the screenshots are from [Unsplash](https://unsplash.com/license), via [Lorem Picsum](https://picsum.photos)
 
 ## License
 
