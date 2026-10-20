@@ -62,7 +62,12 @@ final class Navigator {
 
 extension EnvironmentValues {
     @Entry var zoomNamespace: Namespace.ID?
+    /// Stack depth of the page a tile sits on; hidden pages below keep the same photos as zoom sources.
+    @Entry var zoomPageDepth = 0
 }
+
+/// Zoom source ID scoped to its page, so the viewer zooms into the visible tile, not a hidden page's copy.
+func zoomSourceID(_ assetID: String, pageDepth: Int) -> String { "\(pageDepth)/\(assetID)" }
 
 extension View {
     /// Marks a tile as the place the viewer zooms out of and back into.
@@ -75,10 +80,11 @@ extension View {
 private struct ZoomSourceModifier: ViewModifier {
     let id: String
     @Environment(\.zoomNamespace) private var namespace
+    @Environment(\.zoomPageDepth) private var pageDepth
 
     func body(content: Content) -> some View {
         if let namespace {
-            content.matchedTransitionSource(id: id, in: namespace)
+            content.matchedTransitionSource(id: zoomSourceID(id, pageDepth: pageDepth), in: namespace)
         } else {
             content
         }
@@ -147,6 +153,7 @@ struct MetroStack<Root: View, Destination: View>: View {
             // the app while the note editor's keyboard came up.
             .ignoresSafeArea(.keyboard)
             .featherScope(itemState)
+            .environment(\.zoomPageDepth, depth)
             .offset(x: isTop ? backProgress * width : 0)
             .opacity(opacity)
             // Leaving and covered pages keep their background until their items have moved away.

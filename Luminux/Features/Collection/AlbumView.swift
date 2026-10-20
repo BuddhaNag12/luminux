@@ -94,7 +94,7 @@ struct AlbumView: View {
                 addToAlbum: { assets in addToAlbum = AddToAlbumRequest(assets: assets) }
             )
         }
-        return [AppBarButton(title: "select", systemImage: "checklist") { selection.begin() }]
+        return selection.isAllowed ? [AppBarButton(title: "select", systemImage: "checklist") { selection.begin() }] : []
     }
 
     private var widgetCollection: LiveTileStore.Collection {

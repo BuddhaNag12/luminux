@@ -98,7 +98,7 @@ struct CollectionView: View {
             return [AppBarButton(title: "new album", systemImage: "plus") { isNamingAlbum = true }]
         }
         if page == Self.placesPage { return [] }
-        return [AppBarButton(title: "select", systemImage: "checklist") { selection.begin() }]
+        return selection.isAllowed ? [AppBarButton(title: "select", systemImage: "checklist") { selection.begin() }] : []
     }
 
     private var menu: [AppBarMenuItem] {

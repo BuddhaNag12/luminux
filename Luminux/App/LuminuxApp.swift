@@ -123,7 +123,7 @@ private struct AppShell: View {
         .environment(\.zoomNamespace, zoom)
         .fullScreenCover(item: $navigator.viewer) { request in
             ViewerView(request: request)
-                .navigationTransition(.zoom(sourceID: navigator.viewerCurrentID ?? request.startID, in: zoom))
+                .navigationTransition(.zoom(sourceID: zoomSourceID(navigator.viewerCurrentID ?? request.startID, pageDepth: navigator.path.count), in: zoom))
         }
         .onOpenURL { url in
             // The live tile opens the hub or its collection; a locked wide tile opens the Pro page.
