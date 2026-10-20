@@ -25,7 +25,7 @@ struct PermissionView: View {
 
             Spacer()
 
-            Button(isDenied ? "open settings" : "allow access") {
+            Button(isDenied ? "open settings" : "continue") {
                 if isDenied {
                     library.openSystemSettings()
                 } else {

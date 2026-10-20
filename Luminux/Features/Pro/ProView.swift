@@ -26,7 +26,6 @@ struct ProPitch: View {
         Perk(glyph: "photo", title: "hub background", detail: "Pick the hub's background from any album, photo set or photos you choose."),
         Perk(glyph: "pin", title: "unlimited pins", detail: "Pin as many albums and photo sets to the hub as you like."),
         Perk(glyph: "play.rectangle", title: "slideshow", detail: "A slow pan and zoom through any collection."),
-        Perk(glyph: "person.crop.rectangle.stack", title: "lift subjects", detail: "Touch and hold a person or pet to copy, share or drag it out."),
         Perk(glyph: "slider.horizontal.3", title: "editing", detail: "Crop, light, colour and looks, saved back to your library and editable later."),
     ]
 
@@ -82,10 +81,13 @@ struct ProPitch: View {
                 .opacity(0.9)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // Without a product the button retries the load, so a bad connection isn't a dead end.
             Button {
-                Task { await store.purchase(with: purchase) }
+                Task {
+                    if store.product == nil { await store.refresh() } else { await store.purchase(with: purchase) }
+                }
             } label: {
-                Text(store.isPurchasing ? "unlocking…" : "unlock pro")
+                Text(store.isPurchasing ? "unlocking…" : store.product == nil ? "try again" : "unlock pro")
                     .font(.metro(17, .semibold))
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity, minHeight: 48)
@@ -93,10 +95,9 @@ struct ProPitch: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
-            .disabled(store.product == nil || store.isPurchasing)
-            .opacity(store.product == nil ? 0.5 : 1)
+            .disabled(store.isPurchasing)
             .padding(.top, 20)
-            .accessibilityLabel(store.product.map { "Unlock Pro for \($0.displayPrice)" } ?? "Unlock Pro")
+            .accessibilityLabel(store.product.map { "Unlock Pro for \($0.displayPrice)" } ?? "Try loading Pro again")
 
             Button {
                 Task { await store.restore() }

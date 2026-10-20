@@ -91,7 +91,7 @@ struct OnboardingView: View {
             Button("open settings") { library.openSystemSettings() }
                 .buttonStyle(.metro)
         } else {
-            Button("allow access") {
+            Button("continue") {
                 Task {
                     await library.requestAccess()
                     onFinish()
