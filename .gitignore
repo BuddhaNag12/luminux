@@ -3,7 +3,10 @@ build/
 DerivedData/
 *.xcuserstate
 xcuserdata/
-Luminux.xcodeproj/
+# XcodeGen output; Package.resolved stays tracked because Xcode Cloud needs pinned packages
+Luminux.xcodeproj/project.pbxproj
+Luminux.xcodeproj/xcshareddata/
+Luminux.xcodeproj/project.xcworkspace/contents.xcworkspacedata
 
 # Mockups and progress screenshots stay local
 Design/
