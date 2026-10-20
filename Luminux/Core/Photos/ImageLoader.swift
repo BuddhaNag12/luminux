@@ -10,6 +10,13 @@ nonisolated final class ImageLoader: @unchecked Sendable {
     /// Decoding runs side by side across photos (a 15-column screen is hundreds of them); each request still gets its
     /// own serial queue on top, so its quick low-quality image stays ahead of its final one.
     private let decodeQueue = DispatchQueue(label: "com.buddhanag.luminux.decode", qos: .userInitiated, attributes: .concurrent)
+    private let cacheQueue = DispatchQueue(label: "com.buddhanag.luminux.cache", qos: .userInitiated)
+    /// The batch being warmed; touched only on `cacheQueue`.
+    private var cachedBatch: (assets: ObjectIdentifier, range: Range<Int>, side: CGFloat)?
+    private let preloadQueue = DispatchQueue(label: "com.buddhanag.luminux.preload", qos: .utility)
+    /// The latest preload; an older one still going stops at its next photo.
+    private let preloadLock = NSLock()
+    private var preloadGeneration = 0
     /// Decoded grid thumbnails, so a tile that appears again (a new zoom level, a pinch's preview, scrolling back)
     /// shows its photo on its first frame instead of a blank square while it loads.
     private let thumbnails: NSCache<NSString, Thumbnail> = {
@@ -85,14 +92,48 @@ nonisolated final class ImageLoader: @unchecked Sendable {
     }
 
     /// Starts loading grid thumbnails ahead of time, replacing the last batch. Matches the grid's request options so
-    /// PhotoKit can serve the cached images.
-    func cache(_ assets: [PHAsset], side: CGFloat) {
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
-        options.resizeMode = .fast
-        options.isNetworkAccessAllowed = true
-        manager.stopCachingImagesForAllAssets()
-        manager.startCachingImages(for: assets, targetSize: CGSize(width: side, height: side), contentMode: .aspectFill, options: options)
+    /// PhotoKit can serve the cached images. Off the main thread: fetching hundreds of photos stalled a pinch's frame.
+    func cache(_ assets: PHFetchResult<PHAsset>, in range: Range<Int>, side: CGFloat) {
+        let manager = manager
+        // Serial, so batches replace each other in the order they were asked for.
+        cacheQueue.async { [self] in
+            // Asking again for the batch already warming (a pinch's start, then its preview) would throw that work away.
+            let batch = (assets: ObjectIdentifier(assets), range: range, side: side)
+            if range.isEmpty { return }
+            if let last = cachedBatch, last == batch { return }
+            cachedBatch = batch
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .opportunistic
+            options.resizeMode = .fast
+            options.isNetworkAccessAllowed = true
+            manager.stopCachingImagesForAllAssets()
+            manager.startCachingImages(
+                for: assets.objects(at: IndexSet(integersIn: range)), targetSize: CGSize(width: side, height: side),
+                contentMode: .aspectFill, options: options
+            )
+        }
+    }
+
+    /// Decodes thumbnails ahead into the cache, nearest `center` first, so photos about to come on screen (the edges
+    /// of a pinch zooming out) show on their first frame instead of blank while they load.
+    func preload(_ assets: PHFetchResult<PHAsset>, in range: Range<Int>, around center: Int, side: CGFloat) {
+        let generation = preloadLock.withLock { preloadGeneration += 1; return preloadGeneration }
+        let manager = manager
+        preloadQueue.async { [self] in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.resizeMode = .fast
+            options.isNetworkAccessAllowed = true
+            options.isSynchronous = true
+            for index in range.sorted(by: { abs($0 - center) < abs($1 - center) }) {
+                guard preloadLock.withLock({ preloadGeneration == generation }) else { return }
+                let asset = assets.object(at: index)
+                if cachedThumbnail(for: asset) != nil { continue }
+                manager.requestImage(for: asset, targetSize: CGSize(width: side, height: side), contentMode: .aspectFill, options: options) { image, _ in
+                    if let image { self.storeThumbnail(image.preparingForDisplay() ?? image, for: asset, side: side) }
+                }
+            }
+        }
     }
 
     func livePhoto(for asset: PHAsset, targetSize: CGSize) -> AsyncStream<PHLivePhoto> {

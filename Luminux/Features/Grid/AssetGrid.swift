@@ -125,6 +125,7 @@ struct AssetGrid: View {
                         .foregroundStyle(metro.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 8)
+                        .padding(.horizontal, MetroMetrics.margin)
                         .metroFeather(row: 0)
                 }
 
@@ -134,7 +135,8 @@ struct AssetGrid: View {
                     if let sections {
                         ForEach(layout.headers(in: rendered), id: \.position) { slot in
                             header(sections[slot.position], assets: assets)
-                                .metroFeather(row: slot.row, hingeX: MetroMetrics.margin)
+                                .padding(.horizontal, MetroMetrics.margin)
+                                .metroFeather(row: slot.row, hingeX: 0)
                                 .placed(slot.frame)
                         }
                     }
@@ -208,14 +210,15 @@ struct AssetGrid: View {
             }
             .clipped()
         .overlay(alignment: .top) {
-            if showsProNote { proNote }
+            if showsProNote { proNote.padding(.horizontal, MetroMetrics.margin) }
         }
+        // Once the grid comes to rest, the photos a pinch out would bring in at the edges, so they're ready before it.
+        .task(id: "\(renderBand)-\(columns)") { await preloadWhenIdle() }
         .task(id: showsProNote) {
             guard showsProNote else { return }
             try? await Task.sleep(for: .seconds(3))
             withAnimation(MetroMotion.fade) { showsProNote = false }
         }
-        .padding(.horizontal, MetroMetrics.margin)
         .preference(key: GridPinchingKey.self, value: pinch.isActive)
     }
 
@@ -254,10 +257,10 @@ struct AssetGrid: View {
     /// The camera's quick return when the pinch turns back before the next level.
     private static let resizeMotion = Animation.spring(response: 0.25, dampingFraction: 1)
     /// The middle block's change into order (or back), a dissolve with a fade, on its own clock.
-    private static let sortDuration = 0.5
+    private static let sortDuration = 0.7
     private static let sortMotion = Animation.easeInOut(duration: sortDuration)
     private static let catchUpMotion = Animation.interactiveSpring(response: 0.2, dampingFraction: 1)
-    private static let tapZoomMotion = Animation.easeInOut(duration: 0.6)
+    private static let tapZoomMotion = Animation.easeInOut(duration: 0.8)
     /// How far the pinch goes toward the next level before the middle block changes into its order, and back.
     /// Zooming in, it starts almost at once, so it's done before the photos around leave the screen.
     private static func sortsAt(_ zoomsIn: Bool) -> CGFloat { zoomsIn ? 0.1 : 0.3 }
@@ -283,9 +286,10 @@ struct AssetGrid: View {
             pinch.anchorsOnSortedColumn = false
             setAnchor(at: centroid)
             // Zooming out shows photos that weren't on screen; start loading them before the preview needs them.
+            if let index = pinch.anchorIndex { preloadWider(around: index) }
             if let index = pinch.anchorIndex, let wider = GridZoom.levels.first(where: { $0 > base }) {
                 let side = GridZoom.tileSide(columns: wider, width: gridWidth, gutter: MetroMetrics.gutter)
-                ImageLoader.shared.cache(nearby(index, columns: wider), side: AssetThumbnail.requestSide(for: side * displayScale))
+                ImageLoader.shared.cache(library.assets(in: source), in: nearby(index, columns: wider), side: AssetThumbnail.requestSide(for: side * displayScale))
             }
             applyPinch()
         case .changed:
@@ -323,7 +327,7 @@ struct AssetGrid: View {
         pinch.previewOffset = min(max(rest, metrics.minOffsetY), maxOffset)
         pinch.previewColumns = target
         // Each level the pinch heads to, not just the first: carried on to 15, its photos are new ones.
-        ImageLoader.shared.cache(nearby(anchorIndex, columns: target), side: AssetThumbnail.requestSide(for: next.side * displayScale))
+        ImageLoader.shared.cache(library.assets(in: source), in: nearby(anchorIndex, columns: target), side: AssetThumbnail.requestSide(for: next.side * displayScale))
         return true
     }
 
@@ -633,10 +637,11 @@ struct AssetGrid: View {
                 // dissolves into its sorted photo there. Anything drawn beyond them (new photos, or a photo's own
                 // sorted copy above or below the block) showed as a narrow strip while the camera was far out.
                 if target < base { continue }
-                // Already on screen in the old block: its sorted place shows it only once the block sorts, so it's
-                // never drawn twice.
-                if shown.contains(index) {
-                    fillers.append(PinchTile(index: index, kind: current.isSameSection(index, anchorIndex) ? .sortedMiddle : .arriving, unsorted: slot))
+                // Already on screen in another month: it fades in here as it fades out there. One from the month under
+                // the fingers shows here from the start, like the photos around it, even though it's still in the old
+                // block too until that sorts: waiting for the sort left black cells at the edges of a pinch out.
+                if shown.contains(index), !current.isSameSection(index, anchorIndex) {
+                    fillers.append(PinchTile(index: index, kind: .arriving, unsorted: slot))
                     continue
                 }
                 // Most come in from beyond the edges as the camera pulls back; one that starts already on screen,
@@ -693,7 +698,13 @@ struct AssetGrid: View {
         withAnimation(Self.settleMotion) {
             pinch.progress = 1
         } completion: {
-            switchGrid(to: target)
+            // The middle block's fade may still be going; switching under it would cut it short.
+            let fadeLeft = pinch.sortSettlesAt - CACurrentMediaTime()
+            if fadeLeft > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + fadeLeft) { switchGrid(to: target) }
+            } else {
+                switchGrid(to: target)
+            }
         }
     }
 
@@ -708,7 +719,7 @@ struct AssetGrid: View {
             scrollPosition.scrollTo(y: offset ?? pinch.previewOffset)
         }
         let targetSide = GridZoom.tileSide(columns: target, width: gridWidth, gutter: MetroMetrics.gutter)
-        ImageLoader.shared.cache(nearby(pinch.anchorIndex ?? 0, columns: target), side: AssetThumbnail.requestSide(for: targetSide * displayScale))
+        ImageLoader.shared.cache(library.assets(in: source), in: nearby(pinch.anchorIndex ?? 0, columns: target), side: AssetThumbnail.requestSide(for: targetSide * displayScale))
         // A couple of frames for the grid to draw at its new level before it takes over.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { finishSwap(swap.id) }
     }
@@ -759,13 +770,29 @@ struct AssetGrid: View {
         }
     }
 
+    private func preloadWhenIdle() async {
+        try? await Task.sleep(for: .milliseconds(300))
+        let middle = CGPoint(x: gridWidth / 2, y: metrics.offsetY + viewportHeight / 2)
+        guard !Task.isCancelled, !pinch.isActive, let index = layout(columns: columns).index(nearest: middle) else { return }
+        preloadWider(around: index)
+    }
+
+    /// Decodes the photos the next level out would show around `index` (a screen and a half of them), so the photos
+    /// coming in at the edges of a pinch out are drawn at once.
+    private func preloadWider(around index: Int) {
+        guard let wider = GridZoom.levels.first(where: { $0 > columns }) else { return }
+        let side = GridZoom.tileSide(columns: wider, width: gridWidth, gutter: MetroMetrics.gutter)
+        let count = library.assets(in: source).count
+        let span = wider * Int((viewportHeight * 1.5 / (side + MetroMetrics.gutter)).rounded(.up)) / 2
+        let range = min(max(index - span, 0), count)..<min(index + span, count)
+        ImageLoader.shared.preload(library.assets(in: source), in: range, around: index, side: AssetThumbnail.requestSide(for: side * displayScale))
+    }
+
     /// The photos a few screens around `index`, to have their thumbnails ready for a new level.
-    private func nearby(_ index: Int, columns: Int) -> [PHAsset] {
-        let assets = library.assets(in: source)
+    private func nearby(_ index: Int, columns: Int) -> Range<Int> {
         let span = columns * 30
-        let range = max(index - span, 0)..<min(index + span, assets.count)
-        guard !range.isEmpty else { return [] }
-        return assets.objects(at: IndexSet(integersIn: range))
+        let count = library.assets(in: source).count
+        return min(max(index - span, 0), count)..<min(index + span, count)
     }
 
     // MARK: Swipe to select
@@ -904,7 +931,7 @@ private struct GridRowView: View, Equatable {
                         .placed(CGRect(x: CGFloat(index - slot.range.lowerBound) * (side + gutter), y: 0, width: side, height: side))
                 }
             }
-            .metroFeather(row: slot.row, hingeX: MetroMetrics.margin)
+            .metroFeather(row: slot.row, hingeX: 0)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(slot.range.count) photos")
             .accessibilityHint("Zooms in on them")
@@ -951,7 +978,7 @@ private struct GridRowView: View, Equatable {
                 }
         }
         .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
-        .metroFeather(row: slot.row, column: column, hingeX: MetroMetrics.margin + CGFloat(column) * (side + gutter))
+        .metroFeather(row: slot.row, column: column, hingeX: CGFloat(column) * (side + gutter))
         .modifier(PinchHidesTile(pinch: pinch))
         .zoomSource(id: id)
         .accessibilityAddTraits(selection.selectedIDs.contains(id) ? .isSelected : [])
@@ -1193,14 +1220,13 @@ struct PinchTile: Identifiable {
     var id: String { "\(kind == .edge || kind == .moving ? .shown : kind)-\(index)" }
 
     /// The photos around stay as they are (those appearing on screen fade in over the first part of the pinch);
-    /// the middle block's old photos fade out over its sorted ones as `sortedness` goes to 1. Once the grid has
-    /// switched, they all fade off it.
+    /// in the middle block each cell's old photo fades out as its sorted one fades in, as `sortedness` goes to 1.
+    /// Once the grid has switched, they all fade off it.
     func opacity(at stage: PinchStage, progress: CGFloat, sortedness: CGFloat) -> CGFloat {
         if stage == .sorted { return 0 }
         switch kind {
         case .shown: return 1 - sortedness
-        // Solid under the old photo fading off it, so the two never dim the screen between them.
-        case .sortedMiddle: return sortedness > 0 ? 1 : 0
+        case .sortedMiddle: return sortedness
         case .appearing: return min(progress * 3, 1)
         case .filler, .edge: return 1
         case .moving: return 1 - progress
@@ -1223,11 +1249,13 @@ struct PinchCamera {
     /// The size to draw a photo whose cell is `side`, so the gaps between photos stay the grid's gutter on screen
     /// rather than growing with the camera.
     func drawnSide(_ side: CGFloat, at progress: CGFloat) -> CGFloat {
-        (startSide + (side - startSide) * progress) / scale(at: progress)
+        startSide * pow(side / max(startSide, 1), progress) / scale(at: progress)
     }
 
+    /// By ratio rather than by difference, as the fingers spread: each bit of pinch zooms by the same factor, so the
+    /// photos stay under the fingers and the gaps between them don't close up midway.
     func scale(at progress: CGFloat) -> CGFloat {
-        startScale + (1 - startScale) * progress
+        startScale * pow(1 / startScale, progress)
     }
 
     /// Draws `to` at the point between `from` and `to`, for a layer scaled around its top-left corner.
@@ -1252,7 +1280,10 @@ private struct PinchTileLayer: View {
             let side = camera.drawnSide(pinch.tiles.first?.unsorted.width ?? 0, at: pinch.progress)
             ForEach(pinch.tiles) { tile in
                 let frame = tile.frame(at: pinch.progress)
-                AssetThumbnail(asset: assets.object(at: tile.index), pixelSide: frame.width * max(camera.startScale, 1) * displayScale)
+                // Photos already on screen ask for the size they were. New ones, coming in at the edges, ask for their
+                // own: the size that was warmed for them, so they show at once instead of loading blank.
+                let magnified = tile.kind == .shown || tile.kind == .edge || tile.kind == .moving
+                AssetThumbnail(asset: assets.object(at: tile.index), pixelSide: frame.width * (magnified ? max(camera.startScale, 1) : 1) * displayScale)
                     .frame(width: side, height: side)
                     .offset(x: frame.midX - side / 2, y: frame.midY - side / 2)
                     .opacity(tile.opacity(at: pinch.stage, progress: pinch.progress, sortedness: pinch.sortedness))
