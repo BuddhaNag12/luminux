@@ -13,7 +13,7 @@ Luminux is a photo gallery for the photos and videos on your iPhone. Your photos
 
 ## Place names in the journal
 
-To title trips like "a day in goa", Luminux sends the locations of photos taken away from home to Apple Maps and gets back place names. Only the locations are sent, never the photos, and the names are kept on your iPhone. Apple handles these requests under [Apple's privacy policy](https://www.apple.com/legal/privacy/). You can turn this off in Settings → "name places in the journal".
+To title trips like "a day in goa", Luminux sends the locations of photos taken away from home to Apple Maps and gets back place names. Only the locations are sent, never the photos, and the names are kept on your iPhone. Apple handles these requests under [Apple's privacy policy](https://www.apple.com/legal/privacy/). You can turn this off in Settings → "place names".
 
 ## Ads
 

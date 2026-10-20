@@ -197,7 +197,7 @@ struct TileView: View {
     var body: some View {
         Group {
             if isLocked {
-                lockedFace.widgetURL(URL(string: "luminux://pro"))
+                lockedFace.widgetURL(URL(string: "luminux://hub"))
             } else {
                 tile.widgetURL(entry.url)
             }
@@ -212,7 +212,8 @@ struct TileView: View {
             Image(systemName: "lock")
                 .font(.system(size: 22, weight: .light))
             Spacer()
-            Text("Wide tiles come with Luminux Pro. Tap to see what it adds.")
+            // A plain fact, no pitch or paywall link: App Review bars marketing inside widgets.
+            Text("This size needs Luminux Pro.")
                 .font(.custom("Selawik-Semilight", size: 15))
             Text("photos")
                 .font(.custom("Selawik-Semilight", size: 15))

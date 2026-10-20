@@ -29,8 +29,6 @@ struct ViewerView: View {
     @State private var isPanelMounted = false
     @State private var screenHeight: CGFloat = 0
     @State private var playback = VideoPlayback()
-    /// True after an ad unlocked subject lifting for this visit.
-    @State private var liftUnlocked = false
     @State private var isLiftingSubject = false
     /// Favourite state shown before PhotoKit reports the change, so the heart answers the tap at once.
     @State private var pendingFavorites: [String: Bool] = [:]
@@ -59,8 +57,9 @@ struct ViewerView: View {
                             asset: assets.object(at: position),
                             isCurrent: position == index,
                             playback: playback,
-                            allowsLift: store.isUnlocked || liftUnlocked,
-                            onLockedLift: { withPro("lift a subject once") { liftUnlocked = true } },
+                            // Free for everyone: subject lifting is iOS's own feature, and App Review won't let it be sold.
+                            allowsLift: true,
+                            onLockedLift: {},
                             onSubjectHighlight: { isLiftingSubject = $0 }
                         ) {
                             if showsDetails {

@@ -159,8 +159,18 @@ struct SettingsView: View {
             }
             link("take the tour", detail: "What Luminux can do, page by page") { showsTour = true }
             link("about and licences", detail: "Version, fonts and their licences") { navigator.push(.about) }
+            link("privacy policy", detail: "What Luminux and its ads collect") { openInApp(Self.privacyPolicyURL) }
+            link("contact support", detail: "Questions, bugs and ideas on GitHub") { openInApp(Self.supportURL) }
         }
         .metroFeather(row: 2)
+    }
+
+    // The same pages go in App Store Connect's Privacy Policy and Support URL fields.
+    private static let privacyPolicyURL = URL(string: "https://github.com/BuddhaNag12/luminux/blob/main/docs/privacy.md")!
+    private static let supportURL = URL(string: "https://github.com/BuddhaNag12/luminux/issues")!
+
+    private func openInApp(_ url: URL) {
+        UIApplication.shared.openInApp(url, tint: UIColor(metro.accentColor))
     }
 
     /// An accent tile that opens the Pro page, or a quiet thank-you once it's bought.

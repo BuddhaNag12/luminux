@@ -30,6 +30,8 @@ final class AdConsent {
         if !hasStarted {
             hasStarted = true
             MobileAds.shared.isApplicationMuted = true
+            // Ads must suit the app's 4+ age rating; App Review checks this.
+            MobileAds.shared.requestConfiguration.maxAdContentRating = .general
             await MobileAds.shared.start()
         }
         return true
