@@ -3,8 +3,8 @@ import UIKit
 
 /// The photo grid's zoom levels, like Photos: pinch out for bigger photos, in for more of them.
 nonisolated enum GridZoom {
-    /// From 3 up, odd counts, so each level is the one before with the same number of columns added on either side.
-    static let levels = [2, 3, 5, 7, 15]
+    /// Odd counts, so each level is the one before with the same number of columns added on either side.
+    static let levels = [3, 5, 7, 15]
 
     /// The smallest photos are for finding your place, not for acting on: no selecting there.
     static func allowsSelection(columns: Int) -> Bool { columns < levels.last! }
@@ -58,7 +58,7 @@ nonisolated enum GridZoom {
 /// so nothing has to be laid out to know where it goes. The grid draws only what's on screen from it, and a pinch
 /// lines one level up with the next from it exactly.
 nonisolated struct GridLayout: Equatable {
-    static let headerHeight: CGFloat = 44
+    static let headerHeight: CGFloat = 60
     static let bottomPadding: CGFloat = 24
 
     let columns: Int
@@ -149,6 +149,13 @@ nonisolated struct GridLayout: Equatable {
     func frame(inSectionOf index: Int, row: Int, column: Int) -> CGRect? {
         guard let section = section(of: index) else { return nil }
         return CGRect(x: CGFloat(column) * pitch, y: rowsTop(section) + CGFloat(row) * pitch, width: side, height: side)
+    }
+
+    /// The stagger row of `row` in the month holding `index`, unique across the grid for rows inside a month; rows
+    /// beyond it carry on the count.
+    func gridRow(inSectionOf index: Int, row: Int) -> Int? {
+        guard let section = section(of: index) else { return nil }
+        return section.firstRow + (section.hasHeader ? 1 : 0) + row
     }
 
     /// The column and stagger row of a photo, for the page turn.

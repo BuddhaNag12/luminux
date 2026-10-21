@@ -6,10 +6,11 @@ struct JournalMosaic: View {
     let entry: JournalEntry
 
     @Environment(Journal.self) private var journal
+    @Environment(PhotoLibrary.self) private var library
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
-        let assets = Self.assets(for: journal.keyPhotos(for: entry, count: 3))
+        let assets = journal.keyPhotos(for: entry, count: 3).compactMap(library.asset(id:))
         GeometryReader { geo in
             let gutter = MetroMetrics.gutter
             let showsSide = assets.count >= 3
@@ -33,14 +34,6 @@ struct JournalMosaic: View {
         }
         .task(id: entry.id) { await journal.scoreKeyPhotos(for: entry) }
         .accessibilityHidden(true)
-    }
-
-    /// In the order asked for; a fetch by identifier comes back in library order.
-    private static func assets(for ids: [String]) -> [PHAsset] {
-        let result = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
-        var byID: [String: PHAsset] = [:]
-        result.enumerateObjects { asset, _, _ in byID[asset.localIdentifier] = asset }
-        return ids.compactMap { byID[$0] }
     }
 }
 

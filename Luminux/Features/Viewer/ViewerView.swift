@@ -80,12 +80,19 @@ struct ViewerView: View {
             .scrollDisabled(isLiftingSubject)
             .scrollPosition(id: $index)
             .scrollIndicators(.hidden)
-            .ignoresSafeArea()
             .scaleEffect(1 - min(dismissDrag / 1600, 0.25))
             // Keeps the photo centred in the space left above the details panel.
             .offset(y: dismissDrag - min(detailsLift, panelHeight) / 2)
+            // After the move, so the pager stretches into the safe areas by where it's laid out, not where it's drawn:
+            // the other way round, it grew to keep its bottom on the screen's edge while that edge was inside the home
+            // indicator's area and stopped once past it, jolting the photo (centred on it) 20 pt mid-drag.
+            .ignoresSafeArea()
             .gesture(VerticalDragRecognizer(isEnabled: !isZoomed && !isLiftingSubject, onChange: verticalDragChanged, onEnd: verticalDragEnded))
         }
+        // The photos always get the whole screen. Ignoring the safe areas only on the pager held while nothing else
+        // was showing: with the details panel up it was laid out inside them, so the photo (centred on its page) sat
+        // 17 pt high and jumped down when the panel went away. The overlays below still keep clear of them.
+        .ignoresSafeArea()
         .overlay(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
                 if chromeVisible, let current {
@@ -101,13 +108,16 @@ struct ViewerView: View {
             .animation(MetroMotion.fade, value: chromeVisible)
         }
         .overlay(alignment: .bottom) {
-            if isPanelMounted, let current {
-                DetailsPanel(asset: current, onHeaderDrag: verticalDragChanged, onHeaderDragEnd: verticalDragEnded) {
+            // Built ahead, below the screen: building it as a drag began stalled that drag's first frames.
+            if let current {
+                DetailsPanel(asset: current, isShown: isPanelMounted, onHeaderDrag: verticalDragChanged, onHeaderDragEnd: verticalDragEnded) {
                     setDetails(open: false)
                 }
                 .id(current.localIdentifier)
                 .frame(height: max(panelHeight, detailsLift))
-                .offset(y: max(panelHeight - detailsLift, 0))
+                .offset(y: isPanelMounted ? max(panelHeight - detailsLift, 0) : panelHeight + 100)
+                .allowsHitTesting(isPanelMounted)
+                .accessibilityHidden(!isPanelMounted)
                 .environment(\.metro, MetroPalette(theme: .dark, accent: metro.accent))
                 .ignoresSafeArea(edges: .bottom)
             }

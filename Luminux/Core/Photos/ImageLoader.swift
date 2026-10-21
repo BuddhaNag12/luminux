@@ -33,12 +33,23 @@ nonisolated final class ImageLoader: @unchecked Sendable {
         return entry.image
     }
 
-    func storeThumbnail(_ image: UIImage, for asset: PHAsset, side: CGFloat) {
+    /// The kept thumbnail if it's about `side` pixels or more, so a tile that already has it needn't ask PhotoKit again.
+    /// A little short still counts: PhotoKit's fast resizing can hand back slightly less than was asked for.
+    func cachedThumbnail(for asset: PHAsset, atLeast side: CGFloat) -> UIImage? {
+        guard let entry = thumbnails.object(forKey: asset.localIdentifier as NSString),
+              entry.modified == asset.modificationDate, entry.side >= side * 0.9 else { return nil }
+        return entry.image
+    }
+
+    /// Kept by the image's own size, not the size asked for: PhotoKit sends a quick low-resolution image before the
+    /// final one, and a load stopped in between left that blurry one marked as sharp, so it was never replaced.
+    func storeThumbnail(_ image: UIImage, for asset: PHAsset, side _: CGFloat) {
         let key = asset.localIdentifier as NSString
+        let pixels = image.cgImage.map { CGFloat(min($0.width, $0.height)) } ?? 0
         // An edited photo replaces what's kept for it; otherwise only a sharper one does.
-        if let entry = thumbnails.object(forKey: key), entry.modified == asset.modificationDate, entry.side > side { return }
+        if let entry = thumbnails.object(forKey: key), entry.modified == asset.modificationDate, entry.side >= pixels { return }
         let bytes = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
-        thumbnails.setObject(Thumbnail(image: image, side: side, modified: asset.modificationDate), forKey: key, cost: bytes)
+        thumbnails.setObject(Thumbnail(image: image, side: pixels, modified: asset.modificationDate), forKey: key, cost: bytes)
     }
 
     private final class Thumbnail {
