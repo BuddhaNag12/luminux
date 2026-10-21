@@ -10,15 +10,15 @@ struct DetailsPanel: View {
     let asset: PHAsset
     /// Built before it shows; it reads the photo only once it's on its way up.
     var isShown = true
+    /// Fully up: the map comes in then, so setting MapKit up doesn't stall the slide.
+    var isOpen = true
     var onHeaderDrag: (_ translation: CGFloat) -> Void
     var onHeaderDragEnd: (_ translation: CGFloat, _ velocity: CGFloat) -> Void
     var onClose: () -> Void
 
     @Environment(\.metro) private var metro
-    @Environment(\.displayScale) private var displayScale
     @State private var details: AssetDetails?
-    @State private var map: UIImage?
-    @State private var mapWidth: CGFloat = 0
+    @State private var showsMap = false
     @State private var pullDown: CGFloat = 0
 
     var body: some View {
@@ -67,10 +67,8 @@ struct DetailsPanel: View {
             let box = UncheckedBox(value: asset)
             details = await Task.detached(priority: .userInitiated) { await AssetDetails.load(for: box.value) }.value
         }
-        // Its box's own size, so the map's attribution isn't cropped.
-        .task(id: "\(isShown)-\(Int(mapWidth))") {
-            guard isShown, map == nil, mapWidth > 0, let coordinate = asset.location?.coordinate else { return }
-            map = await AssetDetails.mapSnapshot(of: coordinate, size: CGSize(width: mapWidth, height: 200), scale: displayScale)
+        .onChange(of: isOpen, initial: true) { _, open in
+            if open, !showsMap { withAnimation(MetroMotion.fade) { showsMap = true } }
         }
     }
 
@@ -86,29 +84,29 @@ struct DetailsPanel: View {
                     .accessibilityElement(children: .combine)
                 }
 
-                if asset.location != nil {
-                    // A picture of the map, drawn in the background: a live map isn't needed (it doesn't take touches),
-                    // and setting MapKit up stalled the panel's entrance.
-                    // In an overlay, so the picture (filling a box wider than the row) can't widen the panel.
+                if let location = asset.location {
+                    // Its place is kept from the start; the map itself comes in once the panel is fully up.
                     metro.background
                         .frame(height: 200)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { mapWidth = $0 }
                         .overlay {
-                            if let map {
-                                Image(uiImage: map).resizable().scaledToFill().transition(.opacity)
-                                Circle()
-                                    .fill(metro.accentColor)
-                                    .stroke(.white, lineWidth: 2)
-                                    .frame(width: 14, height: 14)
+                            if showsMap {
+                                Map(initialPosition: .region(MKCoordinateRegion(
+                                    center: location.coordinate,
+                                    latitudinalMeters: 2000,
+                                    longitudinalMeters: 2000
+                                ))) {
+                                    Marker("", coordinate: location.coordinate).tint(metro.accentColor)
+                                }
+                                .transition(.opacity)
                             }
                         }
                         .clipped()
-                    .animation(MetroMotion.fade, value: map == nil)
-                    .accessibilityElement()
-                    .accessibilityLabel("Map of where this was taken")
+                        .allowsHitTesting(false)
+                        .accessibilityElement()
+                        .accessibilityLabel("Map of where this was taken")
                 }
             } else {
-                ProgressView().tint(metro.accentColor).padding(.top, 8)
+                MetroProgress().padding(.top, 12)
             }
         }
     }
@@ -161,17 +159,6 @@ nonisolated struct AssetDetails: Sendable {
             rows.append(Row(label: "edited", value: "yes · revert from the ••• menu"))
         }
         return AssetDetails(rows: rows)
-    }
-
-    /// A dark map around `coordinate`, rendered off the main thread; the photo's spot is its centre.
-    static func mapSnapshot(of coordinate: CLLocationCoordinate2D, size: CGSize, scale: CGFloat) async -> UIImage? {
-        let options = MKMapSnapshotter.Options()
-        options.region = MKCoordinateRegion(center: coordinate, latitudinalMeters: 2000, longitudinalMeters: 2000)
-        options.size = size
-        options.scale = scale
-        options.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
-        options.pointOfInterestFilter = .excludingAll
-        return try? await MKMapSnapshotter(options: options).start().image
     }
 
     private static func originalImageData(for asset: PHAsset) async -> Data? {

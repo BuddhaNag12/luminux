@@ -27,6 +27,8 @@ struct ViewerView: View {
     @State private var showsDetails = false
     /// Stays true until the close animation finishes, so the panel can slide away.
     @State private var isPanelMounted = false
+    /// The panel has finished coming up.
+    @State private var isPanelOpen = false
     @State private var screenHeight: CGFloat = 0
     @State private var playback = VideoPlayback()
     @State private var isLiftingSubject = false
@@ -110,7 +112,7 @@ struct ViewerView: View {
         .overlay(alignment: .bottom) {
             // Built ahead, below the screen: building it as a drag began stalled that drag's first frames.
             if let current {
-                DetailsPanel(asset: current, isShown: isPanelMounted, onHeaderDrag: verticalDragChanged, onHeaderDragEnd: verticalDragEnded) {
+                DetailsPanel(asset: current, isShown: isPanelMounted, isOpen: isPanelOpen, onHeaderDrag: verticalDragChanged, onHeaderDragEnd: verticalDragEnded) {
                     setDetails(open: false)
                 }
                 .id(current.localIdentifier)
@@ -229,12 +231,13 @@ struct ViewerView: View {
 
     private func setDetails(open: Bool) {
         showsDetails = open
+        if !open { isPanelOpen = false }
         withAnimation(MetroMotion.standard) { isAppBarExpanded = false }
         if open { isPanelMounted = true }
         withAnimation(MetroMotion.standard, completionCriteria: .logicallyComplete) {
             detailsLift = open ? panelHeight : 0
         } completion: {
-            if !showsDetails { isPanelMounted = false }
+            if showsDetails { isPanelOpen = true } else { isPanelMounted = false }
         }
     }
 
