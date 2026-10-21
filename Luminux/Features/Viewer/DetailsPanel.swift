@@ -8,12 +8,17 @@ import SwiftUI
 /// Dragging the header, or pulling the list down past its top, hands the drag back to the viewer.
 struct DetailsPanel: View {
     let asset: PHAsset
+    /// Built before it shows; it reads the photo only once it's on its way up.
+    var isShown = true
+    /// Fully up: the map comes in then, so setting MapKit up doesn't stall the slide.
+    var isOpen = true
     var onHeaderDrag: (_ translation: CGFloat) -> Void
     var onHeaderDragEnd: (_ translation: CGFloat, _ velocity: CGFloat) -> Void
     var onClose: () -> Void
 
     @Environment(\.metro) private var metro
     @State private var details: AssetDetails?
+    @State private var showsMap = false
     @State private var pullDown: CGFloat = 0
 
     var body: some View {
@@ -56,7 +61,15 @@ struct DetailsPanel: View {
         .foregroundStyle(metro.foreground)
         .background(metro.chrome)
         .accessibilityAction(.escape, onClose)
-        .task(id: asset.renderKey) { details = await AssetDetails.load(for: asset) }
+        // Off the main thread: the panel appears as a drag begins, and reading the file there stalled the drag.
+        .task(id: "\(asset.renderKey)-\(isShown)") {
+            guard isShown, details == nil else { return }
+            let box = UncheckedBox(value: asset)
+            details = await Task.detached(priority: .userInitiated) { await AssetDetails.load(for: box.value) }.value
+        }
+        .onChange(of: isOpen, initial: true) { _, open in
+            if open, !showsMap { withAnimation(MetroMotion.fade) { showsMap = true } }
+        }
     }
 
     @ViewBuilder private var rows: some View {
@@ -72,26 +85,35 @@ struct DetailsPanel: View {
                 }
 
                 if let location = asset.location {
-                    Map(initialPosition: .region(MKCoordinateRegion(
-                        center: location.coordinate,
-                        latitudinalMeters: 2000,
-                        longitudinalMeters: 2000
-                    ))) {
-                        Marker("", coordinate: location.coordinate).tint(metro.accentColor)
-                    }
-                    .frame(height: 200)
-                    .allowsHitTesting(false)
-                    .accessibilityLabel("Map of where this was taken")
+                    // Its place is kept from the start; the map itself comes in once the panel is fully up.
+                    metro.background
+                        .frame(height: 200)
+                        .overlay {
+                            if showsMap {
+                                Map(initialPosition: .region(MKCoordinateRegion(
+                                    center: location.coordinate,
+                                    latitudinalMeters: 2000,
+                                    longitudinalMeters: 2000
+                                ))) {
+                                    Marker("", coordinate: location.coordinate).tint(metro.accentColor)
+                                }
+                                .transition(.opacity)
+                            }
+                        }
+                        .clipped()
+                        .allowsHitTesting(false)
+                        .accessibilityElement()
+                        .accessibilityLabel("Map of where this was taken")
                 }
             } else {
-                ProgressView().tint(metro.accentColor).padding(.top, 8)
+                MetroProgress().padding(.top, 12)
             }
         }
     }
 }
 
-struct AssetDetails {
-    struct Row {
+nonisolated struct AssetDetails: Sendable {
+    struct Row: Sendable {
         let label: String
         let value: String
     }

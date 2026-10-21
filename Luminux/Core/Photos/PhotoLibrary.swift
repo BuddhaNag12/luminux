@@ -60,6 +60,8 @@ final class PhotoLibrary: NSObject {
     @ObservationIgnored private var isObserving = false
     @ObservationIgnored private var reloadGeneration = 0
     @ObservationIgnored private var albumCache: [String: PHFetchResult<PHAsset>] = [:]
+    /// Single assets by id, missing ones included: views look covers up in `body`, and each fetch is a database query.
+    @ObservationIgnored private var assetCache: [String: PHAsset?] = [:]
 
     override init() {
         access = Access(PHPhotoLibrary.authorizationStatus(for: .readWrite))
@@ -116,7 +118,11 @@ final class PhotoLibrary: NSObject {
     }
 
     func asset(id: String) -> PHAsset? {
-        PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
+        _ = changeToken
+        if let cached = assetCache[id] { return cached }
+        let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
+        assetCache[id] = .some(asset)
+        return asset
     }
 
     private func start() {
@@ -140,6 +146,7 @@ final class PhotoLibrary: NSObject {
             sections = snapshot.sections
             albums = snapshot.albums
             albumCache = [:]
+            assetCache = [:]
             changeToken += 1
             isLoaded = true
         }

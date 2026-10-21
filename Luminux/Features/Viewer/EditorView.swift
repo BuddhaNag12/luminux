@@ -49,7 +49,7 @@ struct EditorView: View {
                         .foregroundStyle(metro.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    ProgressView().tint(metro.accentColor).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    MetroProgress().frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .contentShape(Rectangle())
@@ -97,7 +97,12 @@ struct EditorView: View {
         .overlay {
             if isSaving {
                 metro.background.opacity(0.6).ignoresSafeArea()
-                    .overlay { ProgressView("saving").tint(metro.accentColor).font(.metroBody) }
+                    .overlay {
+                        VStack(spacing: 12) {
+                            MetroProgress()
+                            Text("saving").font(.metroBody)
+                        }
+                    }
             }
         }
         .task {
