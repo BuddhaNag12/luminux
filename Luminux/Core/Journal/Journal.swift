@@ -22,6 +22,8 @@ final class Journal {
     private var placeNames: [String: String] = [:]
     /// Each entry's best photos, best first, once scored.
     private var keyPhotoPicks: [String: [String]] = [:]
+    /// Entry ids are their first photo's id, so deleting that photo renames the entry; old id → the entry that took over.
+    @ObservationIgnored private var successors: [String: String] = [:]
 
     @ObservationIgnored private var failedPlaces = Set<String>()
     @ObservationIgnored private var scoring = Set<String>()
@@ -46,8 +48,15 @@ final class Journal {
             .appendingPathComponent("journal.json")
     }
 
+    /// Follows an entry whose first photo was deleted to the entry that now holds its photos.
     func entry(id: String) -> JournalEntry? {
-        entries.first { $0.id == id }
+        var id = id
+        for _ in 0...successors.count {
+            if let entry = entries.first(where: { $0.id == id }) { return entry }
+            guard let next = successors[id] else { return nil }
+            id = next
+        }
+        return nil
     }
 
     func title(for entry: JournalEntry) -> String {
@@ -131,9 +140,37 @@ final class Journal {
             let points = Self.loadPoints()
             return (JournalBuilder.entries(from: points), PlaceGrouping.places(from: points))
         }.value
+        let previous = entries
         entries = built.0
         places = built.1
         isBuilt = true
+        carryOver(from: previous)
+    }
+
+    /// An entry that lost its first photo comes back under a new id; its title and note move with it.
+    private func carryOver(from previous: [JournalEntry]) {
+        var moved = false
+        for (old, new) in Self.successors(of: previous, in: entries) {
+            successors[old] = new
+            if notes[new] == nil, let note = notes.removeValue(forKey: old) {
+                notes[new] = note
+                moved = true
+            }
+        }
+        if moved { save() }
+    }
+
+    /// Old id → new id for each entry that's gone but whose photos live on in another entry.
+    static func successors(of previous: [JournalEntry], in current: [JournalEntry]) -> [String: String] {
+        let currentIDs = Set(current.map(\.id))
+        var result: [String: String] = [:]
+        for old in previous where !currentIDs.contains(old.id) {
+            let photos = Set(old.photoIDs)
+            if let successor = current.first(where: { $0.photoIDs.contains(where: photos.contains) }) {
+                result[old.id] = successor.id
+            }
+        }
+        return result
     }
 
     func place(id: String) -> Place? {
@@ -199,12 +236,12 @@ final class Journal {
     nonisolated private static func loadPoints() -> [PhotoPoint] {
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
-        options.predicate = NSPredicate(format: "(mediaSubtypes & %d) == 0", PHAssetMediaSubtype.photoScreenshot.rawValue)
         let result = PHAsset.fetchAssets(with: options)
         var points: [PhotoPoint] = []
         points.reserveCapacity(result.count)
         result.enumerateObjects { asset, _, _ in
-            guard let date = asset.creationDate else { return }
+            // Filtered here, not in the fetch: iOS 27 matches almost nothing for a bitwise `mediaSubtypes` predicate.
+            guard !asset.mediaSubtypes.contains(.photoScreenshot), let date = asset.creationDate else { return }
             points.append(PhotoPoint(
                 id: asset.localIdentifier,
                 date: date,

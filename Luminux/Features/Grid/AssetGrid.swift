@@ -164,7 +164,9 @@ struct AssetGrid: View {
                 metrics.viewportSize = geometry.containerSize
                 featherOrigin.row = layout.row(atY: max(geometry.contentOffset.y + geometry.contentInsets.top, 0))
                 featherOrigin.rows = Int((geometry.containerSize.height / layout.pitch).rounded(.up))
-                if viewportHeight != geometry.containerSize.height { viewportHeight = geometry.containerSize.height }
+                // The whole scroll view: photos show through the margins too (under the app bar, or a page's header).
+                let height = geometry.containerSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
+                if viewportHeight != height { viewportHeight = height }
                 let band = Int((geometry.contentOffset.y / max(viewportHeight / Self.bandsPerScreen, 1)).rounded(.down))
                 if band != renderBand { renderBand = band }
             }

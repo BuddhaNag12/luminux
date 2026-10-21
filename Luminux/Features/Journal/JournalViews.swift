@@ -146,60 +146,49 @@ struct JournalEntryView: View {
     let entryID: String
 
     @Environment(Journal.self) private var journal
+    @Environment(PhotoLibrary.self) private var library
+    @Environment(Navigator.self) private var navigator
     @Environment(\.metro) private var metro
     @State private var selection = SelectionModel()
     @State private var isAppBarExpanded = false
+    @State private var share: ShareItems?
+    @State private var addToAlbum: AddToAlbumRequest?
     @State private var isRenaming = false
     @State private var newTitle = ""
     @State private var isEditingNote = false
     @State private var bottomInset: CGFloat = 0
+    @State private var headerHeight: CGFloat = 0
+    /// How far the grid has scrolled from its top; the header above the photos moves with it.
+    @State private var scrolled: CGFloat = 0
 
     var body: some View {
         let entry = journal.entry(id: entryID)
         VStack(alignment: .leading, spacing: 0) {
-            Text("LUMINUX · JOURNAL")
+            Text(selection.isActive ? "LUMINUX · \(selection.selectedIDs.count) SELECTED" : "LUMINUX · JOURNAL")
                 .font(.metroOverline)
                 .tracking(1.5)
                 .padding(.leading, MetroMetrics.margin + 4)
                 .metroFeather(row: 0)
 
             if let entry {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(journal.title(for: entry))
-                        .font(.metro(40, .light))
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.7)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(journal.subtitle(for: entry))
-                        .font(.metroCaption)
-                        .foregroundStyle(metro.secondary)
-                    if let note = journal.note(for: entry) {
-                        Button {
-                            isEditingNote = true
-                        } label: {
-                            Text(note)
-                                .font(.metroBody)
-                                .lineLimit(4)
-                                .multilineTextAlignment(.leading)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.top, 6)
-                        .accessibilityHint("Edits the note")
-                    }
-                }
-                .padding(.horizontal, MetroMetrics.margin + 4)
-                .padding(.bottom, 12)
-                .metroFeather(row: 0)
-
+                // The grid places its photos from the top of its scroll view, so the header sits over a top margin
+                // and moves with the scroll instead of going inside it.
                 AssetGrid(
                     source: .identifiers(entry.photoIDs),
                     selection: selection,
                     emptyMessage: "These photos are no longer in your library.",
                     jumpTarget: .constant(nil)
                 )
+                .contentMargins(.top, headerHeight, for: .scrollContent)
                 .contentMargins(.bottom, bottomInset, for: .scrollContent)
+                .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in scrolled = y }
+                .overlay(alignment: .top) {
+                    header(entry)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
+                        .offset(y: -scrolled)
+                }
+                .clipped()
+                .padding(.top, 8)
                 .ignoresSafeArea(.container, edges: .bottom)
             } else {
                 Text("This entry isn't in your journal any more.")
@@ -213,7 +202,12 @@ struct JournalEntryView: View {
         .foregroundStyle(metro.foreground)
         .background(metro.background)
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
-        .metroAppBar(entry == nil ? [] : buttons, isExpanded: $isAppBarExpanded)
+        .onChange(of: entry == nil) { _, isGone in
+            // Deleting photos can take an entry under the minimum; leave instead of showing an empty page.
+            if isGone, navigator.path.last == .journalEntry(entryID), navigator.viewer == nil { navigator.pop() }
+        }
+        .metroAppBar(entry == nil ? [] : buttons, menu: selection.isActive ? [AppBarMenuItem(title: "cancel selection") { selection.end() }] : [], isExpanded: $isAppBarExpanded)
+        .assetActionSheets(share: $share, addToAlbum: $addToAlbum)
         .alert("Rename entry", isPresented: $isRenaming) {
             TextField("Title", text: $newTitle)
             Button("Cancel", role: .cancel) {}
@@ -230,8 +224,64 @@ struct JournalEntryView: View {
         }
     }
 
+    /// The entry's best photos, then its title, dates and note. Drags pass through to the grid underneath, so the
+    /// header scrolls like the photos; only the note takes a tap.
+    private func header(_ entry: JournalEntry) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            JournalMosaic(entry: entry)
+                .aspectRatio(16.0 / 10, contentMode: .fit)
+                .allowsHitTesting(false)
+                .metroFeather(row: 0)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(journal.title(for: entry))
+                    .font(.metro(40, .light))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                    .accessibilityAddTraits(.isHeader)
+                    .allowsHitTesting(false)
+                Text(journal.subtitle(for: entry))
+                    .font(.metroCaption)
+                    .foregroundStyle(metro.secondary)
+                    .allowsHitTesting(false)
+                if let note = journal.note(for: entry) {
+                    Button {
+                        isEditingNote = true
+                    } label: {
+                        Text(note)
+                            .font(.metroBody)
+                            .lineLimit(4)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 6)
+                    .accessibilityHint("Edits the note")
+                }
+            }
+            .padding(.horizontal, MetroMetrics.margin + 4)
+            .padding(.top, 14)
+            .padding(.bottom, 16)
+            .metroFeather(row: 1)
+        }
+    }
+
     private var buttons: [AppBarButton] {
-        [
+        if selection.isActive {
+            return SelectionActions.buttons(
+                selection: selection,
+                library: library,
+                share: { assets in
+                    Task {
+                        let urls = await ImageLoader.shared.exportOriginals(assets)
+                        if !urls.isEmpty { share = ShareItems(urls: urls) }
+                    }
+                },
+                addToAlbum: { assets in addToAlbum = AddToAlbumRequest(assets: assets) }
+            )
+        }
+        let select = selection.isAllowed ? [AppBarButton(title: "select", systemImage: "checklist") { selection.begin() }] : []
+        return select + [
             AppBarButton(title: "rename", systemImage: "pencil") {
                 if let entry = journal.entry(id: entryID) { newTitle = journal.title(for: entry) }
                 isRenaming = true
