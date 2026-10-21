@@ -115,6 +115,18 @@ struct JournalTests {
         #expect(Journal.spread(["a", "b"], count: 3) == ["a", "b"])
     }
 
+    @Test func deletingAnEntrysFirstPhotoKeepsTrackOfIt() {
+        func entry(_ photos: [String]) -> JournalEntry {
+            JournalEntry(id: photos[0], kind: .moment, start: date(hour: 9), end: date(hour: 10),
+                         photoIDs: photos, favoriteIDs: [], center: nil, isAway: false)
+        }
+        let previous = [entry(["a", "b", "c", "d"]), entry(["x", "y", "z"]), entry(["p", "q", "r"])]
+        // "a" deleted: the entry continues as "b"; "x" deleted: too few photos left, so it's gone.
+        let current = [entry(["b", "c", "d"]), entry(["p", "q", "r"])]
+
+        #expect(Journal.successors(of: previous, in: current) == ["a": "b"])
+    }
+
     @Test func homeIsWherePhotosAreTakenOnTheMostDays() {
         // More photos on a two-day trip than at home, but home has more days.
         let points = homeBase + photos(10, day: 0, hour: 10, at: away, prefix: "t0-") + photos(10, day: 1, hour: 10, at: away, prefix: "t1-")
