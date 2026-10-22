@@ -55,9 +55,17 @@ final class PhotoLibrary: NSObject {
     private(set) var albums: [Album] = []
     /// Bumps on every library change so views that resolve fetches lazily re-render.
     private(set) var changeToken = 0
+    /// Photos just deleted, flipping away; the library waits for them before it drops them (see `delete`).
+    private(set) var vanishingIDs: Set<String> = []
+    /// How long a deleted photo takes to flip away.
+    static let vanishDuration = 0.3
     private(set) var isLoaded = false
 
     @ObservationIgnored private var isObserving = false
+    /// A delete is waiting on the system's confirmation, or its photos are still flipping away until `holdUntil`:
+    /// the update PhotoKit sends meanwhile would drop them from the grid before they'd gone.
+    @ObservationIgnored private var isDeleting = false
+    @ObservationIgnored private var holdUntil: CFTimeInterval = 0
     @ObservationIgnored private var reloadGeneration = 0
     @ObservationIgnored private var albumCache: [String: PHFetchResult<PHAsset>] = [:]
     /// Single assets by id, missing ones included: views look covers up in `body`, and each fetch is a database query.
@@ -138,6 +146,7 @@ final class PhotoLibrary: NSObject {
         let generation = reloadGeneration
         Task {
             let snapshot = await Task.detached(priority: .userInitiated) { Self.makeSnapshot() }.value
+            await waitForVanishing()
             guard generation == reloadGeneration else { return }
             allAssets = snapshot.all
             favorites = snapshot.favorites
@@ -148,6 +157,7 @@ final class PhotoLibrary: NSObject {
             albumCache = [:]
             assetCache = [:]
             changeToken += 1
+            vanishingIDs = []
             isLoaded = true
         }
     }
@@ -233,10 +243,25 @@ extension PhotoLibrary {
     }
 
     /// iOS asks the person to confirm; deleted items go to Recently Deleted.
+    /// Once the system's confirmation is accepted, the photos flip away (`vanishingIDs`) before the library lets them go.
     func delete(_ assets: [PHAsset]) async throws {
+        let ids = Set(assets.map(\.localIdentifier))
+        isDeleting = true
+        defer { isDeleting = false }
         let assets = UncheckedBox(value: assets as NSArray)
         try await PHPhotoLibrary.shared().performChanges { @Sendable in
             PHAssetChangeRequest.deleteAssets(assets.value)
+        }
+        holdUntil = CACurrentMediaTime() + Self.vanishDuration
+        vanishingIDs = ids
+    }
+
+    /// Holds an update back while a delete is being confirmed or its photos are flipping away. Capped, so a
+    /// confirmation left open doesn't hold the library forever.
+    private func waitForVanishing() async {
+        let deadline = CACurrentMediaTime() + 60
+        while isDeleting || CACurrentMediaTime() < holdUntil, CACurrentMediaTime() < deadline {
+            try? await Task.sleep(for: .milliseconds(20))
         }
     }
 

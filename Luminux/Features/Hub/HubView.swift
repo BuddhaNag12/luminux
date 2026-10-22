@@ -59,11 +59,11 @@ struct HubView: View {
             }
             PanoramaSection("collection") { collection }
             PanoramaSection("what's new") {
-                photoGrid(.recent, limit: 60, empty: "No photos from the last 30 days.")
+                photoGrid(.recent, limit: 30, empty: "No photos from the last 30 days.")
             }
             PanoramaSection("journal") { journalPanel }
             PanoramaSection("favorites") {
-                photoGrid(.favorites, limit: 60, empty: "No favorites yet. Tap the heart on a photo to add it here.")
+                photoGrid(.favorites, limit: 30, empty: "No favorites yet. Tap the heart on a photo to add it here.")
             }
             if !store.isUnlocked {
                 PanoramaSection("pro") {

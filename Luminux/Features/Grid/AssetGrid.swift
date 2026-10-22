@@ -1000,6 +1000,7 @@ private struct GridRowView: View, Equatable {
         .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
         .metroFeather(row: slot.row, column: column, hingeX: CGFloat(column) * (side + gutter))
         .modifier(PinchHidesTile(pinch: pinch))
+        .modifier(VanishFlip(id: id))
         .zoomSource(id: id)
         .accessibilityAddTraits(selection.selectedIDs.contains(id) ? .isSelected : [])
     }
@@ -1469,6 +1470,23 @@ final class PinchTilesView: UIView {
             }
         }
         return layer
+    }
+}
+
+/// A deleted photo folding out on its left edge, its right side swinging out toward you, and fading, before the
+/// library lets it go; with Reduce Motion it only fades.
+struct VanishFlip: ViewModifier {
+    let id: String
+    @Environment(PhotoLibrary.self) private var library
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        let isGone = library.vanishingIDs.contains(id)
+        content
+            .rotation3DEffect(.degrees(isGone && !reduceMotion ? -70 : 0), axis: (x: 0, y: 1, z: 0), anchor: .leading, perspective: 0.6)
+            .opacity(isGone ? 0 : 1)
+            // Only on the way out: the photo that takes the place over shows straight away (the viewer slides it in).
+            .animation(isGone ? .easeIn(duration: PhotoLibrary.vanishDuration) : nil, value: isGone)
     }
 }
 
