@@ -34,7 +34,7 @@ struct AddToAlbumSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("LUMINUX").font(.metroOverline).tracking(1.5)
+            Text("LUMINUX").font(.metroOverline).tracking(1.5).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             Text("add to album")
                 .font(.metroTitle)
                 .lineLimit(1)
@@ -50,6 +50,7 @@ struct AddToAlbumSheet: View {
                             metro.accentColor
                                 .frame(width: 64, height: 64)
                                 .overlay { Image(systemName: "plus").font(.system(size: 26, weight: .light)).foregroundStyle(.white) }
+                                .accessibilityHidden(true)
                             Text("new album").font(.metro(22, .semilight))
                         }
                     }
@@ -113,6 +114,9 @@ struct AlbumRow: View {
             }
             Spacer(minLength: 0)
         }
+        // The name and count, not the cover photo's date first.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(album.spokenLabel)
         .contentShape(Rectangle())
     }
 }

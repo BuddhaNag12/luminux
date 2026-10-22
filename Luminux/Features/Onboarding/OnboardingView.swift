@@ -24,7 +24,7 @@ struct OnboardingView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("LUMINUX").font(.metroOverline).tracking(1.5)
+                Text("LUMINUX").font(.metroOverline).tracking(1.5).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .frame(minHeight: 44)
                 Spacer()
                 if !isLast {

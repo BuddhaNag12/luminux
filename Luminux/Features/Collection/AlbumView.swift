@@ -27,17 +27,16 @@ struct AlbumView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(selection.isActive ? "LUMINUX · \(selection.selectedIDs.count) SELECTED" : "LUMINUX")
-                .font(.metroOverline)
+                .font(.metroOverline).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .tracking(1.5)
                 .padding(.leading, MetroMetrics.margin + 4)
                 .metroFeather(row: 0)
-            Text(album?.title ?? lastTitle)
+            // An empty smart album isn't in the library's list, but it still has its name.
+            Text(album?.title ?? (lastTitle == "album" ? library.albumTitle(id: albumID) : lastTitle))
                 .font(.metroTitle)
                 .lineLimit(1)
-                .fixedSize()
                 .padding(.leading, MetroMetrics.margin + 1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .clipped()
+                .metroOverflowingTitle()
                 .metroFeather(row: 0)
                 .padding(.bottom, 8)
 

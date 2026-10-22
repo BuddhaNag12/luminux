@@ -1511,6 +1511,8 @@ private struct MonthTitle: View {
             .font(.metro(24, .semilight))
             .foregroundStyle(metro.accentColor)
             .lineLimit(1)
+            // Its row's height is fixed (the grid works out where everything goes), so the name can only grow so far.
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity, minHeight: GridLayout.headerHeight, alignment: .bottomLeading)
     }

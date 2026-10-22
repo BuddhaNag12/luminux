@@ -16,6 +16,9 @@ nonisolated struct Album: Identifiable, Hashable, Sendable {
     let count: Int
     let keyAssetID: String?
     let isUserAlbum: Bool
+
+    /// What VoiceOver says for the album's tile.
+    var spokenLabel: String { "\(title), \(count) \(count == 1 ? "photo" : "photos")" }
 }
 
 /// PHFetchResult is immutable and safe to read from any thread.
@@ -123,6 +126,21 @@ final class PhotoLibrary: NSObject {
 
     func album(id: String) -> Album? {
         albums.first { $0.id == id }
+    }
+
+    /// An album's name, even for an empty smart album, which `albums` leaves out.
+    func albumTitle(id: String) -> String {
+        if let album = album(id: id) { return album.title }
+        let title = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [id], options: nil).firstObject?.localizedTitle
+        return (title ?? "album").lowercased()
+    }
+
+    /// Which of `ids` PhotoKit still has as albums. An empty smart album is still one, though `albums` leaves it out.
+    nonisolated static func existingAlbumIDs(_ ids: [String]) -> Set<String> {
+        var found = Set<String>()
+        PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: ids, options: nil)
+            .enumerateObjects { collection, _, _ in found.insert(collection.localIdentifier) }
+        return found
     }
 
     func asset(id: String) -> PHAsset? {

@@ -199,7 +199,7 @@ struct SettingsView: View {
             Button { navigator.push(.pro) } label: {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
-                        Text("LUMINUX PRO").font(.metroOverline).tracking(1.5)
+                        Text("LUMINUX PRO").font(.metroOverline).tracking(1.5).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                         Spacer()
                         Image(systemName: "arrow.right").font(.system(size: 18, weight: .light))
                     }
@@ -294,6 +294,7 @@ private struct Segments<Option: CaseIterable & Identifiable & RawRepresentable<S
     @Environment(\.metro) private var metro
 
     var body: some View {
+        // Every segment as tall as the tallest, so the dividers stay even.
         HStack(spacing: 2) {
             ForEach(options) { option in
                 let isSelected = option == selection
@@ -302,8 +303,13 @@ private struct Segments<Option: CaseIterable & Identifiable & RawRepresentable<S
                 } label: {
                     Text(option.rawValue)
                         .font(.metro(17, .semilight))
+                        // A third of the width each: very large text shrinks to fit rather than breaking mid-word.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .padding(.horizontal, 4)
                         .foregroundStyle(isSelected ? .white : metro.foreground)
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(minHeight: 44)
                         .background(isSelected ? metro.accentColor : metro.background)
                         .contentShape(Rectangle())
                 }
@@ -311,6 +317,7 @@ private struct Segments<Option: CaseIterable & Identifiable & RawRepresentable<S
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
         // The gaps between segments show this colour as dividers.
         .padding(2)
         .background(metro.foreground)

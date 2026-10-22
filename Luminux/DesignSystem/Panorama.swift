@@ -201,6 +201,8 @@ struct PanoramaSection<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(header)
                 .font(.metroSection)
+                // A panel header across a panel's width: past this it pushed the next one off the screen.
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                 .padding(.leading, MetroMetrics.margin)
                 .metroFeather(row: 1)
                 .accessibilityAddTraits(.isHeader)
