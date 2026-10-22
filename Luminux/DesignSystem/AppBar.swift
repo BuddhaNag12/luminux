@@ -52,6 +52,8 @@ struct MetroAppBar: View {
                                 if isExpanded {
                                     Text(button.title)
                                         .font(.metro(12))
+                                        // As wide as its circle; VoiceOver users hear the full name anyway.
+                                        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                                         .lineLimit(1)
                                         .fixedSize()
                                         .contentTransition(.interpolate)

@@ -161,6 +161,10 @@ struct AlbumsGrid: View {
                         }
                     }
                     .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
+                    // The name and count, not the cover photo's date first.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(album.spokenLabel)
+                    .accessibilityAddTraits(.isButton)
                     .metroFeather(row: index / 2, column: index % 2)
                 }
             }

@@ -10,6 +10,7 @@ struct ViewerView: View {
     @Environment(\.metro) private var metro
     @Environment(\.dismiss) private var dismiss
     @Environment(ProStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var index: Int?
     @State private var showsChrome = true
     @State private var isAppBarExpanded = false
@@ -196,7 +197,8 @@ struct ViewerView: View {
             if let deleted = deletedID, let index = self.index, index < count {
                 let next = assets.object(at: index).localIdentifier
                 deletedID = nil
-                guard next != deleted else { return }
+                // With Reduce Motion it's simply there.
+                guard next != deleted, !reduceMotion else { return }
                 var instant = Transaction()
                 instant.disablesAnimations = true
                 withTransaction(instant) {

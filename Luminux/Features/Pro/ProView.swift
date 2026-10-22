@@ -70,7 +70,7 @@ struct ProPitch: View {
     /// The price and the buy button on an accent block, so the offer is the first thing on the page.
     private var offerCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("LUMINUX PRO").font(.metroOverline).tracking(1.5)
+            Text("LUMINUX PRO").font(.metroOverline).tracking(1.5).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             Text(store.product?.displayPrice ?? "pro")
                 .font(.metro(48, .light))
                 .padding(.top, 10)
@@ -189,7 +189,7 @@ struct ProView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("LUMINUX").font(.metroOverline).tracking(1.5)
+                Text("LUMINUX").font(.metroOverline).tracking(1.5).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .metroFeather(row: 0)
                 Text("pro")
                     .font(.metroTitle)

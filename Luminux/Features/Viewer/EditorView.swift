@@ -28,7 +28,7 @@ struct EditorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("LUMINUX").font(.metroOverline).tracking(1.5)
+            Text("LUMINUX").font(.metroOverline).tracking(1.5).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             Text("edit")
                 .font(.metroTitle)
                 .padding(.leading, -3)

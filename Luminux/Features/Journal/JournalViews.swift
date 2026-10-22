@@ -101,7 +101,7 @@ struct JournalView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 28) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("LUMINUX").font(.metroOverline).tracking(1.5)
+                    Text("LUMINUX").font(.metroOverline).tracking(1.5).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     Text("journal")
                         .font(.metroTitle)
                         .padding(.leading, -3)
@@ -158,7 +158,7 @@ struct JournalEntryView: View {
         let entry = journal.entry(id: entryID)
         VStack(alignment: .leading, spacing: 0) {
             Text(selection.isActive ? "LUMINUX · \(selection.selectedIDs.count) SELECTED" : "LUMINUX · JOURNAL")
-                .font(.metroOverline)
+                .font(.metroOverline).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .tracking(1.5)
                 .padding(.leading, MetroMetrics.margin + 4)
                 .metroFeather(row: 0)

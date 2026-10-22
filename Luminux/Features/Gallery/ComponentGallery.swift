@@ -132,7 +132,7 @@ private struct DemoPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("LUMINUX").font(.metroOverline).tracking(1.5)
+            Text("LUMINUX").font(.metroOverline).tracking(1.5).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             Text("page").font(.metroTitle)
             Text("Turnstile in, back to turnstile out.").font(.metroBody).foregroundStyle(metro.secondary)
             Button("back", action: onBack).buttonStyle(.metro)

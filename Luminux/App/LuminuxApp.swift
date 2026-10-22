@@ -156,9 +156,12 @@ private struct AppShell: View {
             if settings.namesJournalPlaces { await journal.lookUpPlaces() }
         }
         .task(id: library.changeToken) {
-            // Deleted albums leave the hub too.
+            // Deleted albums leave the hub too. Asked of PhotoKit directly: an empty smart album (screenshots with none
+            // left) isn't in `library.albums`, but it's still there and fills up again.
             guard library.isLoaded else { return }
-            hubTiles.prune(albumIDs: Set(library.albums.map(\.id)))
+            let pinned = hubTiles.tiles.compactMap { if case .album(let id) = $0.kind { id } else { nil } }
+            guard !pinned.isEmpty else { return }
+            hubTiles.prune(albumIDs: PhotoLibrary.existingAlbumIDs(pinned))
         }
         .onChange(of: settings.showsStandBy, initial: true) { _, shows in
             guard LiveTileStore.showsStandBy != shows else { return }

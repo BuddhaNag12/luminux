@@ -55,6 +55,8 @@ struct MetroTile<Content: View>: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(TiltButtonStyle(touch: touch, size: size))
+        // A tile's size is fixed, so its text can only grow so far before it spills out.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .gesture(TouchLocationRecognizer { touch = $0 })
         .accessibilityLabel(title ?? "")

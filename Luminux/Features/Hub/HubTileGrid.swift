@@ -258,7 +258,7 @@ struct HubTileFace: View {
         case .date: "date"
         case .favorites: "favorites"
         case .places: "places"
-        case .album(let id): library.album(id: id)?.title ?? "album"
+        case .album(let id): library.albumTitle(id: id)
         case .photoSet(let id): hubTiles.photoSet(id: id)?.title ?? "photos"
         }
     }

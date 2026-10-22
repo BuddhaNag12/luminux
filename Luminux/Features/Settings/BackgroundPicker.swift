@@ -17,7 +17,7 @@ struct BackgroundPicker: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("LUMINUX").font(.metroOverline).tracking(1.5)
+                Text("LUMINUX").font(.metroOverline).tracking(1.5).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 Text("background")
                     .font(.metroTitle)
                     .padding(.leading, -3)

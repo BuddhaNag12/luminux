@@ -44,7 +44,7 @@ struct Pivot<Content: View>: View {
             VStack(alignment: .leading, spacing: 0) {
                 if let overline {
                     Text(overline)
-                        .font(.metroOverline)
+                        .font(.metroOverline).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                         .tracking(1.5)
                         .padding(.leading, MetroMetrics.margin + 4)
                         .metroFeather(row: 0)
