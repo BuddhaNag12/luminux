@@ -34,6 +34,12 @@ struct ViewerView: View {
     @State private var isLiftingSubject = false
     /// Favourite state shown before PhotoKit reports the change, so the heart answers the tap at once.
     @State private var pendingFavorites: [String: Bool] = [:]
+    /// The photo just deleted from here, so the one that takes its place can slide in.
+    @State private var deletedID: String?
+    /// The photo sliding in after a delete, and how far it still has to go (a share of the screen's width; positive
+    /// from the right, negative from the left when the last photo was deleted).
+    @State private var arrivingID: String?
+    @State private var arrivingFrom: CGFloat = 0
 
     private var panelHeight: CGFloat { (screenHeight * 0.55).rounded() }
     private var chromeVisible: Bool { showsChrome && dismissDrag == 0 && !isPanelMounted }
@@ -73,6 +79,10 @@ struct ViewerView: View {
                             if position == index { isZoomed = zoomed }
                         }
                         .containerRelativeFrame([.horizontal, .vertical])
+                        .modifier(VanishFlip(id: assets.object(at: position).localIdentifier))
+                        .visualEffect { [arrivingFrom, isArriving = assets.object(at: position).localIdentifier == arrivingID] content, proxy in
+                            content.offset(x: isArriving ? arrivingFrom * proxy.size.width : 0)
+                        }
                     }
                 }
                 .scrollTargetLayout()
@@ -177,8 +187,23 @@ struct ViewerView: View {
             }
             if count == 0 {
                 dismiss()
-            } else if let index, index >= count {
-                self.index = count - 1
+                return
+            }
+            let fromEnd = index.map { $0 >= count } ?? false
+            if fromEnd { self.index = count - 1 }
+            // The photo now in the deleted one's place slides in after it has flipped away: from the right, or
+            // from the left when the last photo went and the one before takes over.
+            if let deleted = deletedID, let index = self.index, index < count {
+                let next = assets.object(at: index).localIdentifier
+                deletedID = nil
+                guard next != deleted else { return }
+                var instant = Transaction()
+                instant.disablesAnimations = true
+                withTransaction(instant) {
+                    arrivingID = next
+                    arrivingFrom = fromEnd ? -1 : 1
+                }
+                withAnimation(MetroMotion.standard) { arrivingFrom = 0 } completion: { arrivingID = nil }
             }
         }
         .assetActionSheets(share: $share, addToAlbum: $addToAlbum)
@@ -284,7 +309,10 @@ struct ViewerView: View {
             })
         }
         buttons.append(AppBarButton(title: "delete", systemImage: "trash") {
-            Task { try? await library.delete([asset]) }
+            deletedID = asset.localIdentifier
+            Task {
+                do { try await library.delete([asset]) } catch { deletedID = nil }
+            }
         })
         return buttons
     }
