@@ -49,7 +49,7 @@ struct AddToAlbumSheet: View {
                         HStack(spacing: 16) {
                             metro.accentColor
                                 .frame(width: 64, height: 64)
-                                .overlay { Image(systemName: "plus").font(.system(size: 26, weight: .light)).foregroundStyle(.white) }
+                                .overlay { Image(systemName: "plus").font(.system(size: 26, weight: .light)).foregroundStyle(metro.onAccent) }
                                 .accessibilityHidden(true)
                             Text("new album").font(.metro(22, .semilight))
                         }

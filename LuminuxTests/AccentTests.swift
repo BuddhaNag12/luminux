@@ -44,4 +44,18 @@ struct AccentTests {
         #expect(red == green)
         #expect(blue < red)
     }
+
+    @Test func textOnEveryAccentClearsBodyContrast() {
+        let contrast = { (a: Double, b: Double) in (max(a, b) + 0.05) / (min(a, b) + 0.05) }
+        // The presets, the custom range's ends and the switch point itself.
+        let accents = Accent.presets + [0x000000, 0xFFFFFF, 0x808080, 0x7E7E7E].map { Accent.custom(red: Double($0 >> 16 & 0xFF) / 255, green: Double($0 >> 8 & 0xFF) / 255, blue: Double($0 & 0xFF) / 255) }
+        for accent in accents {
+            let text = AccentContrast.needsDarkText(accent.hex) ? 0.0 : 1.0
+            #expect(contrast(luminance(accent), text) >= 4.5, "\(accent.name)")
+        }
+        #expect(AccentContrast.needsDarkText(Accent.lime.hex))
+        #expect(AccentContrast.needsDarkText(Accent.teal.hex))
+        #expect(AccentContrast.needsDarkText(Accent.mango.hex))
+        #expect(!AccentContrast.needsDarkText(Accent.cobalt.hex))
+    }
 }

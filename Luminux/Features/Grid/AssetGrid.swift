@@ -235,7 +235,7 @@ struct AssetGrid: View {
                     .font(.metro(15, .semilight))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(metro.onAccent)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(metro.accentColor)
@@ -1023,7 +1023,7 @@ struct SelectionBox: View {
                 if isFilled {
                     Image(systemName: isSelected ? "checkmark" : "minus")
                         .font(.system(size: side * 0.54, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(metro.onAccent)
                 }
             }
     }

@@ -36,19 +36,23 @@ struct MetroTile<Content: View>: View {
     let action: () -> Void
     @ViewBuilder var content: Content
 
+    @Environment(\.metro) private var metro
     @State private var touch: CGPoint?
     @State private var size: CGSize = .zero
+    /// The content is a plain accent face (`.tileOnAccent()`), not a photo.
+    @State private var isOnAccent = false
 
     var body: some View {
         Button(action: action) {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
+                .onPreferenceChange(TileOnAccentKey.self) { isOnAccent = $0 }
                 .overlay(alignment: .bottomLeading) {
                     if let title, showsTitle {
                         Text(title)
                             .font(.metroCaption)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(isOnAccent ? metro.onAccent : .white)
                             .padding(10)
                     }
                 }
@@ -61,6 +65,16 @@ struct MetroTile<Content: View>: View {
         .gesture(TouchLocationRecognizer { touch = $0 })
         .accessibilityLabel(title ?? "")
     }
+}
+
+private struct TileOnAccentKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}
+
+extension View {
+    /// Marks tile content drawn on the accent, so the tile's label uses the accent's text colour.
+    func tileOnAccent() -> some View { preference(key: TileOnAccentKey.self, value: true) }
 }
 
 struct TiltButtonStyle: ButtonStyle {

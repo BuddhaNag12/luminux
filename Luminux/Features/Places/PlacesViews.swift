@@ -89,7 +89,7 @@ struct PlacesPage: View {
         .overlay(alignment: .topTrailing) {
             Text("\(cluster.count)")
                 .font(.metro(12, .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(metro.onAccent)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)
                 .background(metro.accentColor)

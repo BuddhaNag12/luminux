@@ -19,6 +19,8 @@ nonisolated struct Accent: Hashable, Identifiable, Sendable {
 
     var id: UInt32 { hex }
     var color: Color { Color(hex: hex) }
+    /// Text and glyphs drawn on the accent: black on the light ones (lime, teal, mango), white on the rest.
+    var onColor: Color { AccentContrast.needsDarkText(hex) ? .black : .white }
     var isPreset: Bool { Self.names[hex] != nil }
     /// The preset's name, or the hex code of a custom colour.
     var name: String { Self.names[hex] ?? String(format: "#%06X", hex) }
@@ -74,6 +76,7 @@ struct MetroPalette: Equatable {
     /// The open app bar is nearly solid, so its labels and menu read clearly over busy photos.
     var appBarExpanded: Color { chrome.opacity(0.95) }
     var accentColor: Color { accent.color }
+    var onAccent: Color { accent.onColor }
 }
 
 enum MetroMetrics {

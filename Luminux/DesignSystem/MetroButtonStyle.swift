@@ -7,7 +7,7 @@ struct MetroButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.metro(17, .semilight))
-            .foregroundStyle(configuration.isPressed ? .white : metro.foreground)
+            .foregroundStyle(configuration.isPressed ? metro.onAccent : metro.foreground)
             .padding(.horizontal, 20)
             .frame(minHeight: 48)
             .background(configuration.isPressed ? metro.accentColor : .clear)

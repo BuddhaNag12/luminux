@@ -75,7 +75,7 @@ struct SettingsView: View {
                                 Rectangle().strokeBorder(metro.foreground, lineWidth: 3)
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(accent.onColor)
                             }
                         }
                 }
@@ -161,6 +161,7 @@ struct SettingsView: View {
             link("about and licences", detail: "Version, fonts and their licences") { navigator.push(.about) }
             link("privacy policy", detail: "What Luminux and its ads collect") { openInApp(Self.privacyPolicyURL) }
             link("contact support", detail: "Questions, bugs and ideas on GitHub") { openInApp(Self.supportURL) }
+            link("email support", detail: Self.supportEmail) { UIApplication.shared.open(Self.supportMailURL) }
         }
         .metroFeather(row: 2)
     }
@@ -168,6 +169,8 @@ struct SettingsView: View {
     // The same pages go in App Store Connect's Privacy Policy and Support URL fields.
     private static let privacyPolicyURL = URL(string: "https://github.com/BuddhaNag12/luminux/blob/main/docs/privacy.md")!
     private static let supportURL = URL(string: "https://github.com/BuddhaNag12/luminux/issues")!
+    private static let supportEmail = "buddhanag12@gmail.com"
+    private static let supportMailURL = URL(string: "mailto:\(supportEmail)")!
 
     private func openInApp(_ url: URL) {
         UIApplication.shared.openInApp(url, tint: UIColor(metro.accentColor))
@@ -182,7 +185,7 @@ struct SettingsView: View {
                     .overlay {
                         Image(systemName: "checkmark")
                             .font(.system(size: 20, weight: .light))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(metro.onAccent)
                     }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("pro unlocked").font(.metro(20, .semilight))
@@ -215,7 +218,7 @@ struct SettingsView: View {
                         .font(.metro(15, .semibold))
                         .padding(.top, 16)
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(metro.onAccent)
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(metro.accentColor)
@@ -246,7 +249,7 @@ struct SettingsView: View {
                     }
                     Image(systemName: isLocked ? "lock.fill" : "eyedropper")
                         .font(.system(size: isLocked ? 13 : 17, weight: .light))
-                        .foregroundStyle(isCustom ? .white : metro.foreground)
+                        .foregroundStyle(isCustom ? settings.accent.onColor : metro.foreground)
                 }
         }
         .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
@@ -307,7 +310,7 @@ private struct Segments<Option: CaseIterable & Identifiable & RawRepresentable<S
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
                         .padding(.horizontal, 4)
-                        .foregroundStyle(isSelected ? .white : metro.foreground)
+                        .foregroundStyle(isSelected ? metro.onAccent : metro.foreground)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .frame(minHeight: 44)
                         .background(isSelected ? metro.accentColor : metro.background)
