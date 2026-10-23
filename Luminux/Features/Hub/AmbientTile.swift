@@ -31,6 +31,7 @@ struct AmbientTile: View {
             }
         }
         .background(metro.accentColor)
+        .tileOnAccent()
         .accessibilityHidden(true)
     }
 
@@ -50,7 +51,7 @@ struct AmbientTile: View {
             var square = canvas
             square.translateBy(x: x, y: y)
             square.rotate(by: tilt)
-            square.fill(Path(CGRect(x: -side / 2, y: -side / 2, width: side, height: side)), with: .color(.white.opacity(opacities[index])))
+            square.fill(Path(CGRect(x: -side / 2, y: -side / 2, width: side, height: side)), with: .color(metro.onAccent.opacity(opacities[index])))
         }
     }
 
@@ -85,13 +86,13 @@ struct AmbientTile: View {
             )
             if day == today {
                 let grown = rect.insetBy(dx: -rect.width * (pulse - 1) / 2, dy: -rect.height * (pulse - 1) / 2)
-                canvas.fill(Path(grown), with: .color(.white))
+                canvas.fill(Path(grown), with: .color(metro.onAccent))
                 continue
             }
             // A glow sweeps through the month every 10 s.
             let wave = max(0, cos(2 * .pi * (time / 10 - Double(day) / Double(days))))
             let base = day < today ? 0.24 : 0.12
-            canvas.fill(Path(rect), with: .color(.white.opacity(base + 0.18 * pow(wave, 6))))
+            canvas.fill(Path(rect), with: .color(metro.onAccent.opacity(base + 0.18 * pow(wave, 6))))
         }
     }
 }

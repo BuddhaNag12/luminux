@@ -290,8 +290,9 @@ struct HubTileFace: View {
         metro.accentColor.overlay {
             Image(systemName: name)
                 .font(.system(size: isSmall ? 22 : 34, weight: .ultraLight))
-                .foregroundStyle(.white)
+                .foregroundStyle(metro.onAccent)
         }
+        .tileOnAccent()
     }
 
     private var dateFace: some View {
@@ -304,7 +305,7 @@ struct HubTileFace: View {
             Text(now.formatted(.dateTime.day()))
                 .font(.metro(isSmall ? 34 : 56, .light))
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(metro.onAccent)
         .padding(isSmall ? 6 : 10)
     }
 

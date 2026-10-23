@@ -49,4 +49,4 @@ If this policy changes, the updated version will be posted here with a new effec
 
 ## Contact
 
-Questions about privacy? [Open an issue on GitHub](https://github.com/BuddhaNag12/luminux/issues).
+Questions about privacy? Email [buddhanag12@gmail.com](mailto:buddhanag12@gmail.com) or [open an issue on GitHub](https://github.com/BuddhaNag12/luminux/issues).

@@ -111,7 +111,7 @@ struct ProPitch: View {
             .buttonStyle(.plain)
             .padding(.top, 4)
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(metro.onAccent)
         .padding(20)
         .padding(.bottom, -8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -125,7 +125,7 @@ struct ProPitch: View {
                 .overlay {
                     Image(systemName: "checkmark")
                         .font(.system(size: 20, weight: .light))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(metro.onAccent)
                 }
             VStack(alignment: .leading, spacing: 2) {
                 Text("pro unlocked").font(.metro(20, .semilight))

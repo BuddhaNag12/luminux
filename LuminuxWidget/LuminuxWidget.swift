@@ -194,6 +194,9 @@ struct TileView: View {
     /// the accent stays behind the lock and empty faces.
     private var showsPhotos: Bool { !isLocked && !entry.needsCollection && !entry.imageURLs.isEmpty }
 
+    /// Text on the accent: black on the light accents, white on the rest.
+    private var onAccent: Color { AccentContrast.needsDarkText(entry.accentHex) ? .black : .white }
+
     var body: some View {
         Group {
             if isLocked {
@@ -219,7 +222,7 @@ struct TileView: View {
                 .font(.custom("Selawik-Semilight", size: 15))
                 .opacity(0.7)
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(onAccent)
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -248,7 +251,7 @@ struct TileView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(onAccent)
                 .padding(8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .background(Color(hex: entry.accentHex))
@@ -265,20 +268,20 @@ struct TileView: View {
             if entry.needsCollection {
                 Text("Touch and hold, then Edit Widget to choose a collection.")
                     .font(.custom("Selawik-Semilight", size: 15))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(onAccent)
                     .padding(12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else if entry.imageURLs.isEmpty {
                 Image(systemName: "photo.on.rectangle")
                     .font(.system(size: 40, weight: .ultraLight))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(onAccent)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 collage
             }
             Text(entry.title)
                 .font(.custom("Selawik-Semilight", size: 15))
-                .foregroundStyle(.white)
+                .foregroundStyle(showsPhotos ? .white : onAccent)
                 .padding(12)
         }
     }

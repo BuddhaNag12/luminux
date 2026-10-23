@@ -212,7 +212,7 @@ private struct GlyphStack: View {
                         if index == 2 {
                             Image(systemName: symbol)
                                 .font(.system(size: 52, weight: .ultraLight))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(metro.onAccent)
                         }
                     }
                     .offset(x: back * Self.step, y: -back * Self.step)
