@@ -81,6 +81,10 @@ struct Pivot<Content: View>: View {
                         .scrollTargetLayout()
                     }
                     .scrollTargetBehavior(.paging)
+                    // The initial id in the scroll position is ignored at first layout on some screens (iPhone Duo
+                    // open), and a resize (opening or closing it) keeps the old offset; anchoring on the selected
+                    // page as a fraction of the scroll range covers both.
+                    .defaultScrollAnchor(UnitPoint(x: pages.count > 1 ? CGFloat(selection) / CGFloat(pages.count - 1) : 0, y: 0))
                     .scrollDisabled(isPinching)
                     .onPreferenceChange(GridPinchingKey.self) { isPinching = $0 }
                     .scrollPosition(id: $scrolledPage)
@@ -144,6 +148,7 @@ struct Pivot<Content: View>: View {
                 .offset(x: -headerOffset(count: titles.count))
             }
             .clipped()
+            .fadesBeforeTrailingInset()
     }
 
     private func headerOpacity(_ index: Int) -> Double {

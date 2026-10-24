@@ -18,8 +18,10 @@ nonisolated enum TileShuffle {
     static func steps<Photo: Equatable>(pool: [Photo], slots slotCount: Int, count: Int) -> [Step<Photo>] {
         guard !pool.isEmpty, slotCount > 0, count > 0 else { return [] }
         let shuffled = pool.shuffled()
-        // With fewer photos than slots, the first ones fill in again.
-        var slots = (0..<slotCount).map { shuffled[$0 % shuffled.count] }
+        // With fewer photos than slots, they fill in again in a new order, so a mosaic doesn't repeat itself.
+        var fill = shuffled
+        while fill.count < slotCount { fill += pool.shuffled() }
+        var slots = Array(fill.prefix(slotCount))
         var queue = Array(shuffled.dropFirst(min(slotCount, shuffled.count)))
         var generations = Array(repeating: 0, count: slotCount)
         var steps = [Step(slots: slots, changed: nil, side: .bottom, generations: generations)]
@@ -40,5 +42,16 @@ nonisolated enum TileShuffle {
             steps.append(Step(slots: slots, changed: slot, side: Side.allCases.randomElement()!, generations: generations))
         }
         return steps
+    }
+
+    /// Repeats every `interval`th item with `peek` applied after it, so a tile holds still for a step to show
+    /// something else.
+    static func withPeeks<Item>(_ items: [Item], every interval: Int, _ peek: (inout Item) -> Void) -> [Item] {
+        items.enumerated().flatMap { index, item -> [Item] in
+            guard (index + 1) % interval == 0 else { return [item] }
+            var peeking = item
+            peek(&peeking)
+            return [item, peeking]
+        }
     }
 }

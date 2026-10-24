@@ -65,9 +65,13 @@ extension View {
 private struct TiltParallax: ViewModifier {
     let distance: CGFloat
     @Environment(PhoneTilt.self) private var tilt: PhoneTilt?
+    @Environment(Hinge.self) private var hinge: Hinge?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         let value = tilt?.value ?? .zero
-        content.offset(x: value.width * distance, y: -value.height * distance)
+        // Half-open iPhone Duo: opening and closing the hinge drifts the layers apart too.
+        let fold = hinge.map { $0.isPartiallyOpen && !reduceMotion ? $0.fold : 0 } ?? 0
+        content.offset(x: (value.width + fold) * distance, y: -value.height * distance)
     }
 }

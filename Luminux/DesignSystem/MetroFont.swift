@@ -20,6 +20,8 @@ extension Font {
 
     /// Panorama title, e.g. "photos".
     static let metroPanorama = metroDisplay(96)
+    /// Panorama title across two panels, on iPhone Duo's inner screen.
+    static let metroPanoramaWide = metroDisplay(144)
     /// Page title, e.g. "settings".
     static let metroTitle = metroDisplay(56)
     static let metroPivot = metroDisplay(44)
@@ -38,6 +40,7 @@ extension View {
         hidden()
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .leading) { fixedSize() }
+            .fadesBeforeTrailingInset()
             .clipped()
     }
 }

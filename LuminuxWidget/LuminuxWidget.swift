@@ -20,6 +20,28 @@ enum TileSourceOption: String, AppEnum {
     ]
 }
 
+/// How the tile changes its photos, after the live tiles on the hub and Windows Phone's Photos tile.
+enum TileStyle: String, AppEnum {
+    case shuffle, mosaic, flip, peek
+
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Style"
+    static let caseDisplayRepresentations: [TileStyle: DisplayRepresentation] = [
+        .shuffle: "Shuffle",
+        .mosaic: "Mosaic",
+        .flip: "Flip",
+        .peek: "Peek",
+    ]
+}
+
+/// The tile's shuffle button. WidgetKit asks for a new timeline once it has run, and every timeline starts from a
+/// fresh shuffle, so there's nothing for it to do itself.
+struct ShuffleTileIntent: AppIntent {
+    static let title: LocalizedStringResource = "Shuffle photos"
+    static let isDiscoverable = false
+
+    func perform() async throws -> some IntentResult { .result() }
+}
+
 /// An album or photo set made into a widget from the app ("make a widget" in its menu).
 struct TileCollectionEntity: AppEntity {
     let id: String
@@ -55,11 +77,14 @@ struct TileConfigurationIntent: WidgetConfigurationIntent {
     @Parameter(title: "Collection")
     var collection: TileCollectionEntity?
 
+    @Parameter(title: "Style", default: .shuffle)
+    var style: TileStyle
+
     static var parameterSummary: some ParameterSummary {
         When(\.$source, .equalTo, .collection) {
-            Summary { \.$source; \.$collection }
+            Summary { \.$source; \.$collection; \.$style }
         } otherwise: {
-            Summary { \.$source }
+            Summary { \.$source; \.$style }
         }
     }
 
@@ -95,7 +120,7 @@ struct TileConfigurationIntent: WidgetConfigurationIntent {
 }
 
 struct TileEntry: TimelineEntry {
-    let date: Date
+    var date: Date
     /// What each photo slot shows, in slot order.
     let imageURLs: [URL]
     /// The side the changed photo slides in from.
@@ -111,6 +136,9 @@ struct TileEntry: TimelineEntry {
     var needsCollection = false
     /// Pro and switched on in settings; otherwise StandBy shows the plain one-photo tile.
     var showsStandBy = false
+    var style: TileStyle = .shuffle
+    /// A peek step: the photos slide up to show what the tile is.
+    var isPeeking = false
 }
 
 struct TileProvider: AppIntentTimelineProvider {
@@ -119,15 +147,27 @@ struct TileProvider: AppIntentTimelineProvider {
     }
 
     func snapshot(for configuration: TileConfigurationIntent, in context: Context) async -> TileEntry {
-        entry(for: configuration, at: .now, order: Array(configuration.imageURLs.prefix(Self.slots(for: context.family))))
+        entry(for: configuration, at: .now, order: Array(configuration.imageURLs.prefix(Self.slots(for: context.family, style: configuration.style))))
     }
 
     /// How many photos each size shows. The small tile keeps three for its StandBy face, which WidgetKit doesn't tell
     /// the timeline about; on the Home Screen it shows whichever changed last.
-    static func slots(for family: WidgetFamily) -> Int {
-        switch family {
-        case .systemLarge, .systemExtraLarge: 4
-        default: 3
+    static func slots(for family: WidgetFamily, style: TileStyle) -> Int {
+        if family.isAccessory { return 1 }
+        if style == .mosaic {
+            let mosaic = mosaic(for: family)
+            return mosaic.columns * mosaic.rows
+        }
+        return family == .systemSmall || family == .systemMedium ? 3 : 4
+    }
+
+    /// The mosaic's grid: small, roughly square cells, and no more of them than the photos the app exports.
+    static func mosaic(for family: WidgetFamily) -> (columns: Int, rows: Int) {
+        if #available(iOS 27, *), family == .systemExtraLargePortrait { return (3, 4) }
+        return switch family {
+        case .systemMedium: (4, 2)
+        case .systemExtraLarge: (4, 3)
+        default: (3, 3)
         }
     }
 
@@ -140,13 +180,20 @@ struct TileProvider: AppIntentTimelineProvider {
         guard urls.count > 1 else {
             return Timeline(entries: [entry(for: configuration, at: .now, order: urls)], policy: .after(.now.addingTimeInterval(3600)))
         }
-        let steps = TileShuffle.steps(pool: urls, slots: Self.slots(for: context.family), count: Self.entriesPerTimeline)
-        let entries = steps.enumerated().map { index, step in
-            var entry = entry(for: configuration, at: .now.addingTimeInterval(Double(index) * Self.shuffleInterval), order: step.slots)
+        let isPeek = configuration.style == .peek
+        // A peek after every third change: three quarters of the entries change a photo.
+        let count = isPeek ? Self.entriesPerTimeline * 3 / 4 : Self.entriesPerTimeline
+        let steps = TileShuffle.steps(pool: urls, slots: Self.slots(for: context.family, style: configuration.style), count: count)
+        var entries = steps.map { step in
+            var entry = entry(for: configuration, at: .now, order: step.slots)
             entry.side = step.side
             entry.generations = step.generations
             entry.changed = step.changed
             return entry
+        }
+        if isPeek { entries = TileShuffle.withPeeks(entries, every: 3) { $0.isPeeking = true } }
+        for index in entries.indices {
+            entries[index].date = .now.addingTimeInterval(Double(index) * Self.shuffleInterval)
         }
         return Timeline(entries: entries, policy: .atEnd)
     }
@@ -164,7 +211,8 @@ struct TileProvider: AppIntentTimelineProvider {
             isPro: LiveTileStore.unlocksWideTiles,
             url: configuration.url,
             needsCollection: configuration.source == .collection && configuration.storedCollection == nil,
-            showsStandBy: LiveTileStore.showsStandBy && LiveTileStore.unlocksWideTiles
+            showsStandBy: LiveTileStore.showsStandBy && LiveTileStore.unlocksWideTiles,
+            style: configuration.style
         )
     }
 }
@@ -176,9 +224,21 @@ struct PhotosLiveTile: Widget {
         }
         .configurationDisplayName("Photos")
         .description("A live tile of your recent photos, favorites or a collection from Luminux.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .supportedFamilies(Self.families)
         .contentMarginsDisabled()
     }
+
+    private static var families: [WidgetFamily] {
+        var families: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge, .accessoryCircular, .accessoryRectangular, .accessoryInline]
+        // iPhone Duo's open screen.
+        if #available(iOS 27, *) { families += [.systemExtraLarge, .systemExtraLargePortrait] }
+        return families
+    }
+}
+
+extension WidgetFamily {
+    /// The Lock Screen's sizes.
+    var isAccessory: Bool { [.accessoryCircular, .accessoryRectangular, .accessoryInline].contains(self) }
 }
 
 struct TileView: View {
@@ -186,9 +246,11 @@ struct TileView: View {
     @Environment(\.widgetFamily) private var family
     /// False in StandBy (the phone charging on its side), where the small tile becomes photo tiles and a date tile.
     @Environment(\.showsWidgetContainerBackground) private var showsBackground
+    /// Accented on a tinted or clear Home Screen, vibrant on the Lock Screen.
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
-    /// The medium and large tiles come with Luminux Pro; the small one is free.
-    private var isLocked: Bool { family != .systemSmall && !entry.isPro }
+    /// The medium and larger tiles come with Luminux Pro; the small one and the Lock Screen's are free.
+    private var isLocked: Bool { family != .systemSmall && !family.isAccessory && !entry.isPro }
 
     /// Photos sit on near-black, so the gaps between them read as a dark frame rather than lines of accent colour;
     /// the accent stays behind the lock and empty faces.
@@ -199,13 +261,56 @@ struct TileView: View {
 
     var body: some View {
         Group {
-            if isLocked {
+            if family.isAccessory {
+                accessory.widgetURL(entry.url)
+            } else if isLocked {
                 lockedFace.widgetURL(URL(string: "luminux://hub"))
             } else {
                 tile.widgetURL(entry.url)
             }
         }
-        .containerBackground(for: .widget) { showsPhotos ? Color(hex: 0x0B0B0B) : Color(hex: entry.accentHex) }
+        .containerBackground(for: .widget) {
+            if family.isAccessory {
+                Color.clear
+            } else {
+                showsPhotos ? Color(hex: 0x0B0B0B) : Color(hex: entry.accentHex)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var accessory: some View {
+        switch family {
+        case .accessoryInline:
+            Label(entry.title, systemImage: "photo.on.rectangle")
+        case .accessoryCircular:
+            if showsPhotos {
+                photo(0).clipShape(Circle())
+            } else {
+                ZStack {
+                    AccessoryWidgetBackground()
+                    Image(systemName: "photo.on.rectangle")
+                }
+            }
+        default:
+            HStack(spacing: 8) {
+                if showsPhotos {
+                    photo(0)
+                        .frame(width: 50, height: 50)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(entry.title)
+                        .font(.custom("Selawik-Semilight", size: 17))
+                        .widgetAccentable()
+                    Text("luminux")
+                        .font(.caption)
+                        .opacity(0.7)
+                }
+                .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private static let gutter: CGFloat = 3
@@ -223,6 +328,7 @@ struct TileView: View {
                 .opacity(0.7)
         }
         .foregroundStyle(onAccent)
+        .widgetAccentable()
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -231,9 +337,38 @@ struct TileView: View {
     private var tile: some View {
         if family == .systemSmall && !showsBackground && showsPhotos && entry.showsStandBy {
             standBy
+        } else if entry.style == .peek && showsPhotos {
+            peekingTile
         } else {
             homeTile
         }
+    }
+
+    /// Like a Windows Phone peek tile: now and then the photos slide up to show what the tile is, then drop back.
+    private var peekingTile: some View {
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                homeTile.frame(height: geo.size.height)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.title)
+                        .font(.custom("Selawik-Semilight", size: family == .systemSmall ? 22 : 28))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text(entry.date.formatted(.dateTime.weekday(.wide).day().month(.wide)).lowercased())
+                        .font(.custom("Selawik-Semilight", size: 13))
+                        .opacity(0.8)
+                }
+                .foregroundStyle(onAccent)
+                .widgetAccentable()
+                .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(height: geo.size.height)
+                .background(Color(hex: entry.accentHex))
+            }
+            .offset(y: entry.isPeeking ? -geo.size.height * 0.55 : 0)
+            .animation(.smooth(duration: 0.7), value: entry.isPeeking)
+        }
+        .clipped()
     }
 
     /// Like a corner of the hub: three photo tiles and today's date on an accent tile.
@@ -282,35 +417,65 @@ struct TileView: View {
             Text(entry.title)
                 .font(.custom("Selawik-Semilight", size: 15))
                 .foregroundStyle(showsPhotos ? .white : onAccent)
+                .widgetAccentable()
                 .padding(12)
+        }
+        .overlay(alignment: .topTrailing) {
+            // Not on the small tile: there a tap anywhere opens the app.
+            if family != .systemSmall && showsPhotos {
+                Button(intent: ShuffleTileIntent()) {
+                    Image(systemName: "shuffle")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 30, height: 30)
+                        .background(.black.opacity(0.45), in: Circle())
+                        .widgetAccentable()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Shuffle photos")
+                .padding(8)
+            }
         }
     }
 
     @ViewBuilder
     private var collage: some View {
-        switch family {
-        case .systemMedium:
-            HStack(spacing: Self.gutter) {
-                photo(0)
-                VStack(spacing: Self.gutter) {
-                    photo(1)
-                    photo(2)
-                }
-            }
-        case .systemLarge, .systemExtraLarge:
+        if entry.style == .mosaic {
+            let mosaic = TileProvider.mosaic(for: family)
             Grid(horizontalSpacing: Self.gutter, verticalSpacing: Self.gutter) {
-                GridRow {
-                    photo(0)
-                    photo(1)
-                }
-                GridRow {
-                    photo(2)
-                    photo(3)
+                ForEach(0..<mosaic.rows, id: \.self) { row in
+                    GridRow {
+                        ForEach(0..<mosaic.columns, id: \.self) { column in
+                            photo(row * mosaic.columns + column)
+                        }
+                    }
                 }
             }
-        default:
-            // The newest photo always lands on top as it slides in.
-            photo(entry.changed ?? 0, layer: entry.generations.reduce(0, +))
+        } else {
+            switch family {
+            case .systemSmall:
+                // The newest photo always lands on top as it slides in.
+                photo(entry.changed ?? 0, layer: entry.generations.reduce(0, +))
+            case .systemMedium:
+                HStack(spacing: Self.gutter) {
+                    photo(0)
+                    VStack(spacing: Self.gutter) {
+                        photo(1)
+                        photo(2)
+                    }
+                }
+            default:
+                Grid(horizontalSpacing: Self.gutter, verticalSpacing: Self.gutter) {
+                    GridRow {
+                        photo(0)
+                        photo(1)
+                    }
+                    GridRow {
+                        photo(2)
+                        photo(3)
+                    }
+                }
+            }
         }
     }
 
@@ -323,19 +488,39 @@ struct TileView: View {
             .overlay {
                 if let image = UIImage(contentsOfFile: url.path) {
                     Image(uiImage: image).resizable()
-                        // A tinted or clear Home Screen otherwise draws photos as flat white shapes.
-                        .widgetAccentedRenderingMode(.fullColor)
+                        // Without a mode, a tinted or clear Home Screen draws photos as flat white shapes; tinted
+                        // like everything else there, they sit with the rest of the Home Screen.
+                        .widgetAccentedRenderingMode(renderingMode == .accented ? .accentedDesaturated : .fullColor)
                         .scaledToFill()
                         .id(url)
                         .zIndex(Double(layer ?? entry.generations[safe: slot] ?? 0))
-                        .transition(.asymmetric(
-                            insertion: .move(edge: entry.side.edge),
-                            removal: .scale(scale: 0.9).combined(with: .opacity)
-                        ))
+                        .transition(transition)
                 }
             }
             .animation(.smooth(duration: 0.7), value: url)
             .clipped()
+    }
+
+    private var transition: AnyTransition {
+        guard entry.style == .flip else {
+            return .asymmetric(insertion: .move(edge: entry.side.edge), removal: .scale(scale: 0.9).combined(with: .opacity))
+        }
+        // The hub's flip: the old photo turns away edge-on, then the new one turns in from the other side.
+        return .asymmetric(
+            insertion: .modifier(active: FlipFace(angle: -90), identity: FlipFace(angle: 0)).animation(.easeOut(duration: 0.3).delay(0.25)),
+            removal: .modifier(active: FlipFace(angle: 90), identity: FlipFace(angle: 0)).animation(.easeIn(duration: 0.25))
+        )
+    }
+}
+
+/// One face of a flipping tile, turned about its horizontal middle.
+private struct FlipFace: ViewModifier {
+    let angle: Double
+
+    func body(content: Content) -> some View {
+        content
+            .rotation3DEffect(.degrees(angle), axis: (x: 1, y: 0, z: 0), perspective: 0.6)
+            .opacity(abs(angle) < 90 ? 1 : 0)
     }
 }
 

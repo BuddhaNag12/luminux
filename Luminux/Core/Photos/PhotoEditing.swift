@@ -2,56 +2,103 @@ import CoreImage
 import ImageIO
 import Photos
 import UIKit
+import Vision
 
-/// A rotate, crop and adjust edit. The crop is normalized to the rotated image, with its origin at the top left.
-/// Saved with the photo, so the editor can reopen it and rebuild from the original.
+/// A rotate, flip, straighten, crop and adjust edit. The crop is normalized to the turned, flipped and straightened
+/// image, with its origin at the top left. Saved with the photo, so the editor can reopen it and rebuild from the
+/// original.
 nonisolated struct EditRecipe: Codable, Equatable, Sendable {
     var quarterTurns = 0
+    /// Mirrored left to right, after the quarter turns.
+    var flipped = false
+    /// Degrees, clockwise; the photo is zoomed in just enough that no empty corner shows.
+    var straighten: Double = 0
     var crop = CGRect(x: 0, y: 0, width: 1, height: 1)
     var adjustments = Adjustments()
     /// The preset the adjustments came from, for highlighting it; the adjustments alone decide the result.
     var look: Look?
 
     static let formatIdentifier = "com.buddhanag.luminux.edit"
-    static let formatVersion = "2"
-    /// Versions this build can reopen. Version 1 had rotate and crop only.
-    static let readableVersions: Set<String> = ["1", "2"]
+    static let formatVersion = "3"
+    /// Versions this build can reopen. Version 1 had rotate and crop only; 2 added adjustments, 3 flip and straighten.
+    static let readableVersions: Set<String> = ["1", "2", "3"]
+    static let straightenRange: ClosedRange<Double> = -45...45
 
-    init(quarterTurns: Int = 0, crop: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1), adjustments: Adjustments = Adjustments(), look: Look? = nil) {
+    init(quarterTurns: Int = 0, flipped: Bool = false, straighten: Double = 0, crop: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1), adjustments: Adjustments = Adjustments(), look: Look? = nil) {
         self.quarterTurns = quarterTurns
+        self.flipped = flipped
+        self.straighten = straighten
         self.crop = crop
         self.adjustments = adjustments
         self.look = look
     }
 
-    private enum CodingKeys: String, CodingKey { case quarterTurns, crop, adjustments, look }
+    private enum CodingKeys: String, CodingKey { case quarterTurns, flipped, straighten, crop, adjustments, look }
 
     /// Fields a recipe was saved without keep their defaults, so older edits still open.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         quarterTurns = try container.decodeIfPresent(Int.self, forKey: .quarterTurns) ?? 0
+        flipped = try container.decodeIfPresent(Bool.self, forKey: .flipped) ?? false
+        straighten = try container.decodeIfPresent(Double.self, forKey: .straighten) ?? 0
         crop = try container.decodeIfPresent(CGRect.self, forKey: .crop) ?? CGRect(x: 0, y: 0, width: 1, height: 1)
         adjustments = try container.decodeIfPresent(Adjustments.self, forKey: .adjustments) ?? Adjustments()
         look = try? container.decodeIfPresent(Look.self, forKey: .look)
     }
 
     var isIdentity: Bool { hasNoGeometry && adjustments.isNeutral }
-    var hasNoGeometry: Bool { quarterTurns % 4 == 0 && crop == CGRect(x: 0, y: 0, width: 1, height: 1) }
+    var hasNoGeometry: Bool {
+        quarterTurns % 4 == 0 && !flipped && straighten == 0 && crop == CGRect(x: 0, y: 0, width: 1, height: 1)
+    }
 
     /// One more quarter turn counterclockwise, with the crop turned along so it keeps framing the same part.
     func rotatedLeft() -> EditRecipe {
         var next = self
-        next.quarterTurns = (quarterTurns + 1) % 4
+        // The turns come before the mirror, so a mirrored photo turns the other way to turn left on screen.
+        next.quarterTurns = (quarterTurns + (flipped ? 3 : 1)) % 4
         // A point at (x, y) from the top left lands at (y, 1 - x) after a counterclockwise turn.
         next.crop = CGRect(x: crop.minY, y: 1 - crop.maxX, width: crop.height, height: crop.width)
         return next
     }
 
-    /// Rotates counterclockwise by `quarterTurns`, crops, then adjusts.
+    /// Mirrored left to right as it looks now: the crop and the straightening are mirrored along.
+    func flippedHorizontally() -> EditRecipe {
+        var next = self
+        next.flipped.toggle()
+        next.straighten = straighten == 0 ? 0 : -straighten
+        next.crop = CGRect(x: 1 - crop.maxX, y: crop.minY, width: crop.width, height: crop.height)
+        return next
+    }
+
+    /// How much a `size` frame must be zoomed when turned by `degrees` to still cover the unturned frame.
+    static func straightenScale(degrees: Double, size: CGSize) -> CGFloat {
+        let angle = abs(degrees) * .pi / 180
+        let width = max(size.width, 1), height = max(size.height, 1)
+        return max(
+            (width * cos(angle) + height * sin(angle)) / width,
+            (width * sin(angle) + height * cos(angle)) / height
+        )
+    }
+
+    /// Rotates counterclockwise by `quarterTurns`, mirrors, straightens, crops, then adjusts.
     func apply(to image: CIImage, includingCrop: Bool = true) -> CIImage {
         var result = image
         for _ in 0..<((quarterTurns % 4 + 4) % 4) {
             result = result.oriented(.left)
+        }
+        if flipped {
+            result = result.oriented(.upMirrored)
+        }
+        if straighten != 0 {
+            let extent = result.extent
+            // A hair over the exact zoom, so resampling never leaves a soft transparent edge.
+            let scale = Self.straightenScale(degrees: straighten, size: extent.size) * 1.002
+            let turn = CGAffineTransform(translationX: -extent.midX, y: -extent.midY)
+                .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+                // Core Image's y axis points up, so clockwise is a negative angle.
+                .concatenating(CGAffineTransform(rotationAngle: -straighten * .pi / 180))
+                .concatenating(CGAffineTransform(translationX: extent.midX, y: extent.midY))
+            result = result.clampedToExtent().transformed(by: turn).cropped(to: extent)
         }
         if includingCrop {
             let extent = result.extent
@@ -90,6 +137,22 @@ nonisolated enum Adjustment: String, CaseIterable, Identifiable, Sendable {
         default: -1...1
         }
     }
+
+    var group: AdjustmentGroup {
+        switch self {
+        case .exposure, .brightness, .contrast, .highlights, .shadows: .light
+        case .temperature, .tint, .saturation, .vibrance: .colour
+        case .sharpness, .vignette: .effects
+        }
+    }
+}
+
+/// The editor's panels of adjustments, like Lightroom's light, colour and effects.
+nonisolated enum AdjustmentGroup: String, CaseIterable, Identifiable, Sendable {
+    case light, colour, effects
+
+    var id: String { rawValue }
+    var adjustments: [Adjustment] { Adjustment.allCases.filter { $0.group == self } }
 }
 
 /// Slider values, each 0 when untouched. Stored by name, so recipes from other versions still decode.
@@ -191,6 +254,18 @@ nonisolated enum Look: String, CaseIterable, Codable, Identifiable, Sendable {
 
 nonisolated enum PhotoEditing {
     static let context = CIContext(options: [.cacheIntermediates: false])
+
+    /// The straightening, in degrees, that levels the horizon Vision finds in `image`; nil when it finds none.
+    static func levellingAngle(for image: CIImage) -> Double? {
+        guard let cgImage = context.createCGImage(image, from: image.extent) else { return nil }
+        let request = VNDetectHorizonRequest()
+        try? VNImageRequestHandler(cgImage: cgImage).perform([request])
+        guard let horizon = request.results?.first else { return nil }
+        // Vision reports a photo straightened clockwise as a positive angle, so levelling turns it back by as much.
+        let degrees = -Double(horizon.angle) * 180 / .pi
+        guard abs(degrees) > 0.1 else { return 0 }
+        return min(max(degrees, EditRecipe.straightenRange.lowerBound), EditRecipe.straightenRange.upperBound)
+    }
 
     /// Renders an edit for the editor's screen.
     static func preview(of image: CIImage, recipe: EditRecipe, includingCrop: Bool) -> UIImage? {

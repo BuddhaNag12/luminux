@@ -92,6 +92,7 @@ private struct AppShell: View {
     @Environment(Journal.self) private var journal
     @Environment(HubTiles.self) private var hubTiles
     @Namespace private var zoom
+    @State private var hinge = Hinge()
 
     var body: some View {
         @Bindable var navigator = navigator
@@ -121,9 +122,11 @@ private struct AppShell: View {
             }
         }
         .environment(\.zoomNamespace, zoom)
+        .foldAware(hinge)
         .fullScreenCover(item: $navigator.viewer) { request in
             ViewerView(request: request)
                 .navigationTransition(.zoom(sourceID: zoomSourceID(navigator.viewerCurrentID ?? request.startID, pageDepth: navigator.path.count), in: zoom))
+                .foldAware(hinge)
         }
         .onOpenURL { url in
             // The live tile opens the hub or its collection; a locked wide tile opens the Pro page.

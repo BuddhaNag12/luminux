@@ -112,6 +112,9 @@ struct SettingsView: View {
                 .metroFeather(row: 2)
                 .padding(.top, 14)
         }
+        Segments(label: "page animation", options: PageTransition.allCases, selection: $settings.pageTransition)
+            .metroFeather(row: 3)
+            .padding(.top, 32)
         toggleRow("live tiles",
                   caption: "Photo tiles flip to a new picture every few seconds. Off, they change each time you come back to the hub.",
                   isOn: $settings.animatesLiveTiles)
