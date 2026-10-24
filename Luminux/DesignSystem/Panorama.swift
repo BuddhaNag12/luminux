@@ -46,6 +46,9 @@ struct Panorama<Background: View, Content: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.foldX) private var foldX
+    @Environment(\.feather) private var feather
+    @Environment(\.featherStyle) private var featherStyle
+    @Environment(\.featherFromBack) private var featherFromBack
     @Environment(\.metro) private var metro
 
     private var leadingWidth: CGFloat { CGFloat(startPanel) * panelWidth }
@@ -202,6 +205,10 @@ struct Panorama<Background: View, Content: View>: View {
         return UnitPoint(x: min(CGFloat(startPanel) * panelWidth / range, 1), y: 0)
     }
 
+    private var isArriving: Bool {
+        featherStyle == .zoom && featherFromBack && feather.state == .below && !reduceMotion
+    }
+
     private func backgroundLayer(_ background: Background, size: CGSize, panelWidth: CGFloat) -> some View {
         // Wide enough to cover the screen through all the panels' parallax (about four until they're measured), plus
         // the panels left of the start.
@@ -212,6 +219,11 @@ struct Panorama<Background: View, Content: View>: View {
             .clipped()
             .overlay(metro.background.opacity(metro.theme == .dark ? 0.45 : 0.55))
             .offset(x: -leading - parallaxOffset * MetroMotion.backgroundParallax)
+            // Opening the app, the photo drifts in from the right more slowly than the title, for depth; grown a
+            // little so its left edge stays covered.
+            .scaleEffect(isArriving ? 1.2 : 1)
+            .offset(x: isArriving ? size.width * 0.1 : 0)
+            .animation(.timingCurve(Feather.decelerate, duration: 0.8), value: isArriving)
             .frame(width: size.width, height: size.height, alignment: .leading)
             .clipped()
             .accessibilityHidden(true)

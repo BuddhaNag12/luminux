@@ -69,6 +69,9 @@ struct HubTileGrid: View {
         }
         .scaleEffect(isDimmed ? 0.9 : 1)
         .opacity(isDimmed ? 0.6 : 1)
+        .modifier(EditDrift(isActive: isDimmed, seed: index))
+        // Back into its slot smoothly when editing ends or it's picked.
+        .animation(MetroMotion.standard, value: isDimmed)
         .overlay(alignment: .topTrailing) {
             if isSelected && !tile.kind.isBuiltIn {
                 editButton("pin.slash", label: "Unpin") { askToUnpin(tile.kind) }
@@ -96,6 +99,40 @@ struct HubTileGrid: View {
             Button("Make \(tile.size.next.rawValue)") { withAnimation(MetroMotion.standard) { hubTiles.resize(tile.kind) } }
             if !tile.kind.isBuiltIn {
                 Button("Unpin") { askToUnpin(tile.kind) }
+            }
+        }
+    }
+
+    /// While tiles are being rearranged, the ones not held float slowly about their slots, now and then edging over a
+    /// neighbour, like the start screen's edit mode.
+    private struct EditDrift: ViewModifier {
+        let isActive: Bool
+        let seed: Int
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        /// How far a tile wanders from its slot; more than the gap, so neighbours can overlap a little.
+        private static let reach: CGFloat = 8
+
+        func body(content: Content) -> some View {
+            // Each tile gets its own path and pace, so they don't move in step.
+            let turn = Double(seed % 5) * 0.23
+            let sign: CGFloat = seed.isMultiple(of: 2) ? 1 : -1
+            let reach = Self.reach
+            let drifts = isActive && !reduceMotion
+            content.keyframeAnimator(initialValue: CGSize.zero, repeating: drifts) { content, offset in
+                // A stopped animator holds its last value, which left tiles out of their slots after editing.
+                content.offset(drifts ? offset : .zero)
+            } keyframes: { _ in
+                KeyframeTrack(\.width) {
+                    CubicKeyframe(sign * reach, duration: 1.7 + turn)
+                    CubicKeyframe(-sign * reach * 0.6, duration: 2.1 + turn)
+                    CubicKeyframe(0, duration: 1.6)
+                }
+                KeyframeTrack(\.height) {
+                    CubicKeyframe(-reach * 0.7, duration: 1.4 + turn)
+                    CubicKeyframe(reach, duration: 2.2)
+                    CubicKeyframe(0, duration: 1.8 + turn)
+                }
             }
         }
     }
@@ -267,22 +304,22 @@ struct HubTileFace: View {
     private var content: some View {
         switch tile.kind {
         case .cameraRoll:
-            photos(library.allAssets.items(limit: 8), style: .flip, fallback: "photo.on.rectangle")
+            photos(library.allAssets.items(limit: 8), fallback: "photo.on.rectangle")
         case .albums:
             AmbientTile(pattern: .albums)
         case .date:
             AmbientTile(pattern: .date).overlay(alignment: .topLeading) { dateFace }
         case .favorites:
-            photos(library.favorites.items(limit: 8), style: .slide, fallback: "heart")
+            photos(library.favorites.items(limit: 8), fallback: "heart")
         case .places:
             // The newest photo from each of the most recent places.
             let covers = journal.places.prefix(8).compactMap { $0.photoIDs.first.flatMap(library.asset(id:)) }
-            photos(covers.map(AssetItem.init), style: .slide, fallback: "map")
+            photos(covers.map(AssetItem.init), fallback: "map")
         case .album(let id):
-            photos(library.assets(in: .album(id)).items(limit: 8), style: .flip, fallback: "rectangle.stack")
+            photos(library.assets(in: .album(id)).items(limit: 8), fallback: "rectangle.stack")
         case .photoSet(let id):
             let ids = hubTiles.photoSet(id: id)?.photoIDs ?? []
-            photos(library.assets(in: .identifiers(ids)).items(limit: 8), style: .slide, fallback: "photo.stack")
+            photos(library.assets(in: .identifiers(ids)).items(limit: 8), fallback: "photo.stack")
         }
     }
 
@@ -310,7 +347,7 @@ struct HubTileFace: View {
     }
 
     @ViewBuilder
-    private func photos(_ items: [AssetItem], style: LiveTile<AssetItem, AssetThumbnail>.Style, fallback: String) -> some View {
+    private func photos(_ items: [AssetItem], fallback: String) -> some View {
         if items.isEmpty {
             glyph(fallback)
         } else {
@@ -319,7 +356,7 @@ struct HubTileFace: View {
             case .medium: 200
             case .wide: 400
             }
-            LiveTile(items: items, style: style) { item in
+            LiveTile(items: items) { item in
                 AssetThumbnail(asset: item.asset, pixelSide: side * displayScale)
             }
         }

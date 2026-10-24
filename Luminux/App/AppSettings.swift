@@ -18,6 +18,7 @@ final class AppSettings {
         static let namesJournalPlaces = "namesJournalPlaces"
         static let tiltStrength = "tiltStrength"
         static let hasSeenOnboarding = "hasSeenOnboarding"
+        static let pageTransition = "pageTransition"
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -77,6 +78,11 @@ final class AppSettings {
         didSet { defaults.set(namesJournalPlaces, forKey: Key.namesJournalPlaces) }
     }
 
+    /// How pages open and close.
+    var pageTransition: PageTransition {
+        didSet { defaults.set(pageTransition.rawValue, forKey: Key.pageTransition) }
+    }
+
     /// The first-launch tour has been shown (finished or skipped to the end).
     var hasSeenOnboarding: Bool {
         didSet { defaults.set(hasSeenOnboarding, forKey: Key.hasSeenOnboarding) }
@@ -99,7 +105,16 @@ final class AppSettings {
         namesJournalPlaces = defaults.object(forKey: Key.namesJournalPlaces) as? Bool ?? true
         tiltStrength = defaults.string(forKey: Key.tiltStrength).flatMap(TiltStrength.init) ?? .medium
         hasSeenOnboarding = defaults.bool(forKey: Key.hasSeenOnboarding)
+        pageTransition = defaults.string(forKey: Key.pageTransition).flatMap(PageTransition.init) ?? .zoom
     }
+}
+
+/// `turnstile`: Windows Phone's, every line of a page turning on the screen's edge. `zoom`: the newer Windows one, the
+/// page underneath growing and fading away as the new one grows into place.
+nonisolated enum PageTransition: String, CaseIterable, Identifiable, Sendable {
+    case turnstile, zoom
+
+    var id: String { rawValue }
 }
 
 /// How far the hub moves with the phone; high is the strongest the effect goes.
