@@ -79,4 +79,15 @@ nonisolated enum PlaceGrouping {
             span: MKCoordinateSpan(latitudeDelta: max((maxLat - minLat) * 1.4, 0.2), longitudeDelta: max((maxLon - minLon) * 1.4, 0.2))
         )
     }
+
+    /// The photos of every place on a map showing `region`, most recently visited place first.
+    static func photoIDs(in region: MKCoordinateRegion, places: [Place]) -> [String] {
+        places.filter { place in
+            let latitude = abs(place.center.latitude - region.center.latitude)
+            // Across the date line too: the shorter way round.
+            let longitude = abs((place.center.longitude - region.center.longitude + 540).truncatingRemainder(dividingBy: 360) - 180)
+            return latitude <= region.span.latitudeDelta / 2 && longitude <= region.span.longitudeDelta / 2
+        }
+        .flatMap(\.photoIDs)
+    }
 }

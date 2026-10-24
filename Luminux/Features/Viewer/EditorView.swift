@@ -2,14 +2,18 @@ import Photos
 import SwiftUI
 
 /// Crop, adjust and looks, saved as a PhotoKit edit that reopens with its sliders where they were left
-/// (and reverts here or in Photos).
+/// (and reverts here or in Photos). With iPhone Duo open or half-folded, the photo takes the top of the screen and the
+/// controls spread over the bottom.
 struct EditorView: View {
     let asset: PHAsset
 
     @Environment(PhotoLibrary.self) private var library
     @Environment(\.metro) private var metro
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.splitY) private var splitY
     @State private var session: EditSession?
+    /// Where the photo area starts, so it can end on the split line.
+    @State private var photoTop: CGFloat = 0
     @State private var recipe = EditRecipe()
     @State private var preview: UIImage?
     /// Whether `preview` was rendered with the crop applied; the crop handles only fit an uncropped preview.
@@ -59,6 +63,8 @@ struct EditorView: View {
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(showsOriginal ? "Original photo" : "Edited photo")
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { photoTop = $0 }
+            .frame(height: splitY.map { max($0 - photoTop, 120) })
             .padding(.vertical, 12)
 
             modeRow
@@ -67,11 +73,13 @@ struct EditorView: View {
             Group {
                 switch mode {
                 case .crop: aspectRow
-                case .adjust: adjustControls
-                case .looks: looksRow
+                case .adjust: if splitY == nil { adjustControls } else { allAdjustments }
+                case .looks: if splitY == nil { looksRow } else { looksGrid }
                 }
             }
-            .frame(height: 96, alignment: .top)
+            // A fixed height keeps the photo still as the mode changes; split, the controls fill the bottom half.
+            .frame(height: splitY == nil ? 96 : nil, alignment: .top)
+            .frame(maxHeight: splitY == nil ? nil : .infinity, alignment: .top)
             .disabled(session == nil)
 
             if failed {
@@ -175,25 +183,47 @@ struct EditorView: View {
             }
             .scrollIndicators(.hidden)
 
-            HStack(spacing: 12) {
-                MetroSlider(
-                    label: selected.title,
-                    value: Binding {
-                        recipe.adjustments[selected]
-                    } set: {
-                        recipe.adjustments[selected] = $0
-                        recipe.look = nil
-                    },
-                    range: selected.range,
-                    resting: 0
-                )
-                Text(percent(recipe.adjustments[selected]))
-                    .font(.metroCaption)
-                    .monospacedDigit()
-                    .foregroundStyle(metro.secondary)
-                    .frame(width: 40, alignment: .trailing)
-                    .accessibilityHidden(true)
+            slider(selected)
+        }
+    }
+
+    /// Every adjustment at once, each with its own slider, when there's room for them all.
+    private var allAdjustments: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(Adjustment.allCases) { adjustment in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(adjustment.title)
+                            .font(.metro(17, .semilight))
+                            .foregroundStyle(recipe.adjustments[adjustment] == 0 ? metro.foreground : metro.accentColor)
+                        slider(adjustment)
+                    }
+                }
             }
+            .padding(.bottom, 12)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func slider(_ adjustment: Adjustment) -> some View {
+        HStack(spacing: 12) {
+            MetroSlider(
+                label: adjustment.title,
+                value: Binding {
+                    recipe.adjustments[adjustment]
+                } set: {
+                    recipe.adjustments[adjustment] = $0
+                    recipe.look = nil
+                },
+                range: adjustment.range,
+                resting: 0
+            )
+            Text(percent(recipe.adjustments[adjustment]))
+                .font(.metroCaption)
+                .monospacedDigit()
+                .foregroundStyle(metro.secondary)
+                .frame(width: 40, alignment: .trailing)
+                .accessibilityHidden(true)
         }
     }
 
@@ -209,22 +239,38 @@ struct EditorView: View {
         .scrollIndicators(.hidden)
     }
 
-    private func lookTile(_ look: Look?, title: String) -> some View {
+    /// The looks as a grid of larger tiles, when there's room.
+    private var looksGrid: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], alignment: .leading, spacing: 10) {
+                lookTile(nil, title: "none", fills: true)
+                ForEach(Look.allCases) { look in
+                    lookTile(look, title: look.rawValue, fills: true)
+                }
+            }
+            .padding(.bottom, 12)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func lookTile(_ look: Look?, title: String, fills: Bool = false) -> some View {
         let isSelected = look == nil ? recipe.adjustments.isNeutral : recipe.look == look
         return Button {
             recipe.adjustments = look?.adjustments ?? Adjustments()
             recipe.look = look
         } label: {
             VStack(alignment: .leading, spacing: 4) {
-                Group {
-                    if let thumbnail = lookThumbnails[look] {
-                        Image(uiImage: thumbnail).resizable().scaledToFill()
-                    } else {
-                        metro.chrome
+                Color.clear
+                    .overlay {
+                        if let thumbnail = lookThumbnails[look] {
+                            Image(uiImage: thumbnail).resizable().scaledToFill()
+                        } else {
+                            metro.chrome
+                        }
                     }
-                }
-                .frame(width: 64, height: 64)
-                .clipped()
+                    .frame(width: fills ? nil : 64, height: fills ? nil : 64)
+                    .aspectRatio(1, contentMode: .fit)
+                    .clipped()
                 .overlay {
                     if isSelected { Rectangle().strokeBorder(metro.accentColor, lineWidth: 3) }
                 }

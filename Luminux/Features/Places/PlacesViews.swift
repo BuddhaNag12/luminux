@@ -3,14 +3,21 @@ import Photos
 import SwiftUI
 
 /// The collection's "places" page: a map of where photos were taken, with nearby places merged into one bubble when
-/// zoomed out, and every place listed below it, the most recently visited first.
+/// zoomed out, and every place listed below it, the most recently visited first. With iPhone Duo open, the map takes the
+/// top of the screen and the photos of the places on it fill the bottom.
 struct PlacesPage: View {
+    var selection: SelectionModel
+
     @Environment(Journal.self) private var journal
     @Environment(PhotoLibrary.self) private var library
     @Environment(Navigator.self) private var navigator
     @Environment(\.metro) private var metro
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.splitY) private var splitY
     @State private var position: MapCameraPosition = .automatic
+    /// What the map shows, for the photos below it.
+    @State private var region: MKCoordinateRegion?
+    @State private var pageTop: CGFloat = 0
     /// Degrees of latitude the map shows, for merging bubbles.
     @State private var span: Double = 40
     /// The map is created once the page has turned in: setting MapKit up the first time takes long enough to drop
@@ -18,33 +25,43 @@ struct PlacesPage: View {
     @State private var showsMap = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if journal.places.isEmpty {
-                    Text(journal.isBuilt
-                         ? "No photos with a location yet. Photos taken with Location Services on for the Camera show up here."
-                         : "Finding where your photos were taken…")
-                        .font(.metroBody)
-                        .foregroundStyle(metro.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .metroFeather(row: 0)
-                } else {
-                    ZStack {
-                        metro.chrome
-                        if showsMap {
-                            map.transition(.opacity)
+        Group {
+            if let splitY, !journal.places.isEmpty {
+                VStack(spacing: MetroMetrics.gutter) {
+                    // The map ends on the split line, so it fills the top half and the photos the bottom one.
+                    mapArea
+                        .frame(height: max(splitY - pageTop, 120))
+                        .padding(.horizontal, MetroMetrics.margin)
+                    AssetGrid(
+                        source: .identifiers(region.map { PlaceGrouping.photoIDs(in: $0, places: journal.places) } ?? journal.places.flatMap(\.photoIDs)),
+                        selection: selection,
+                        emptyMessage: "No photos here. Move the map to see more.",
+                        jumpTarget: .constant(nil)
+                    )
+                }
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if journal.places.isEmpty {
+                            Text(journal.isBuilt
+                                 ? "No photos with a location yet. Photos taken with Location Services on for the Camera show up here."
+                                 : "Finding where your photos were taken…")
+                                .font(.metroBody)
+                                .foregroundStyle(metro.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .metroFeather(row: 0)
+                        } else {
+                            mapArea.frame(height: 300)
+                            list
                         }
                     }
-                        .frame(height: 300)
-                        .clipShape(Rectangle())
-                        .metroFeather(row: 0)
-                    list
+                    .padding(.bottom, 24)
                 }
+                .scrollIndicators(.hidden)
+                .padding(.horizontal, MetroMetrics.margin)
             }
-            .padding(.bottom, 24)
         }
-        .scrollIndicators(.hidden)
-        .padding(.horizontal, MetroMetrics.margin)
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { pageTop = $0 }
         .task {
             try? await Task.sleep(for: .milliseconds(450))
             withAnimation(MetroMotion.fade) { showsMap = true }
@@ -53,8 +70,20 @@ struct PlacesPage: View {
             if let region = PlaceGrouping.region(showing: journal.places) {
                 position = .region(region)
                 span = region.span.latitudeDelta
+                self.region = region
             }
         }
+    }
+
+    private var mapArea: some View {
+        ZStack {
+            metro.chrome
+            if showsMap {
+                map.transition(.opacity)
+            }
+        }
+        .clipShape(Rectangle())
+        .metroFeather(row: 0)
     }
 
     private var map: some View {
@@ -71,6 +100,7 @@ struct PlacesPage: View {
         .mapControls {}
         .onMapCameraChange(frequency: .onEnd) { context in
             span = context.region.span.latitudeDelta
+            region = context.region
         }
         .accessibilityLabel("Map of where your photos were taken")
     }

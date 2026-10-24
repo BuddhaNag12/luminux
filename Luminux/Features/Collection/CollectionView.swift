@@ -42,7 +42,7 @@ struct CollectionView: View {
 
                 AlbumsGrid().pivotTitle("albums")
 
-                PlacesPage().pivotTitle("places")
+                PlacesPage(selection: selection).pivotTitle("places")
 
                 AssetGrid(
                     source: .favorites,

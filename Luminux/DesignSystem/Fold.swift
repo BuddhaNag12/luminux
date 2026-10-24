@@ -28,6 +28,9 @@ extension EnvironmentValues {
     /// How far the fold runs from the screen's top when it lies across the screen (the open phone turned sideways, or
     /// stood up like a tent); nil otherwise.
     @Entry var foldY: CGFloat?
+    /// Where a top-and-bottom layout divides the screen, from its top: the fold when half-folded with the fold across
+    /// the screen, otherwise its middle while iPhone Duo is open; nil when closed and on other iPhones.
+    @Entry var splitY: CGFloat?
 }
 
 extension View {
@@ -40,12 +43,25 @@ extension View {
 private struct FoldReader: ViewModifier {
     let hinge: Hinge
     @State private var fold: CGRect?
+    @State private var bounds: CGRect = .zero
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    private var acrossFoldY: CGFloat? {
+        fold.flatMap { $0.height > $0.width ? nil : $0.midY }
+    }
+
+    private var splitY: CGFloat? {
+        if hinge.isPartiallyOpen, let acrossFoldY { return acrossFoldY }
+        guard sizeClass == .regular, bounds.height > 0 else { return nil }
+        return acrossFoldY ?? bounds.midY
+    }
 
     func body(content: Content) -> some View {
         if #available(iOS 27.1, *) {
             content
                 .environment(\.foldX, fold.flatMap { $0.height > $0.width ? $0.midX : nil })
-                .environment(\.foldY, fold.flatMap { $0.height > $0.width ? nil : $0.midY })
+                .environment(\.foldY, acrossFoldY)
+                .environment(\.splitY, splitY)
                 .environment(hinge)
                 .onGeometryChange(for: CGRect?.self) { proxy in
                     // Inactive too, so layout doesn't flip-flop as the phone opens and closes.
@@ -53,6 +69,7 @@ private struct FoldReader: ViewModifier {
                     let origin = proxy.frame(in: .global).origin
                     return fold.frame.offsetBy(dx: origin.x, dy: origin.y)
                 } action: { fold = $0 }
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { bounds = $0 }
                 .onHingeChange { _, context in hinge.update(context) }
         } else {
             content.environment(hinge)
