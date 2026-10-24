@@ -152,3 +152,107 @@ struct AdjustmentTests {
     }
 }
 
+struct EditorControlTests {
+    @Test func everyAdjustmentIsInOneGroup() {
+        let grouped = AdjustmentGroup.allCases.flatMap(\.adjustments)
+        #expect(grouped.count == Adjustment.allCases.count)
+        #expect(Set(grouped) == Set(Adjustment.allCases))
+        #expect(AdjustmentGroup.allCases == [.light, .colour, .effects])
+    }
+
+    @Test func theDialFollowsTheDragAndCatchesZero() {
+        let full = MetroDial.pointsPerRange
+        // Dragging left raises the value; half the drag distance covers half the range.
+        #expect(abs(MetroDial.value(from: 0, dragged: -full / 4, range: -1...1, resting: 0) - 0.5) < 0.0001)
+        // Clamped at the ends.
+        #expect(MetroDial.value(from: 0.9, dragged: -full, range: -1...1, resting: 0) == 1)
+        #expect(MetroDial.value(from: 0.5, dragged: full, range: 0...1, resting: 0) == 0)
+        // Caught at zero only when close to it.
+        #expect(MetroDial.value(from: 0, dragged: -full * 0.01, range: -1...1, resting: 0) == 0)
+        #expect(MetroDial.value(from: 0, dragged: -full * 0.05, range: -1...1, resting: 0) != 0)
+        #expect(MetroDial.text(for: 0.24) == "+24")
+        #expect(MetroDial.text(for: -0.07) == "-7")
+    }
+}
+
+struct StraightenAndFlipTests {
+    @Test func straighteningZoomsJustEnoughToCover() {
+        #expect(EditRecipe.straightenScale(degrees: 0, size: CGSize(width: 4, height: 3)) == 1)
+        let scale = EditRecipe.straightenScale(degrees: 10, size: CGSize(width: 400, height: 300))
+        // The frame's corners, turned back by the angle, land inside the zoomed photo.
+        let angle = 10 * Double.pi / 180
+        let halfWidth = 200 * cos(angle) + 150 * sin(angle)
+        let halfHeight = 200 * sin(angle) + 150 * cos(angle)
+        #expect(halfWidth <= 200 * scale + 0.001 && halfHeight <= 150 * scale + 0.001)
+        #expect(scale < 1.4)
+    }
+
+    @Test func aStraightenedPhotoKeepsItsSizeAndHasNoEmptyCorner() {
+        let red = CIImage(color: .red).cropped(to: CGRect(x: 0, y: 0, width: 120, height: 80))
+        let output = EditRecipe(straighten: 15).apply(to: red)
+        #expect(output.extent.size == CGSize(width: 120, height: 80))
+        var pixel = [UInt8](repeating: 0, count: 4)
+        PhotoEditing.context.render(output, toBitmap: &pixel, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
+        #expect(pixel[3] == 255)
+        #expect(pixel[0] > 200)
+    }
+
+    @Test func flippingTwiceIsNoChangeAndMirrorsTheCrop() {
+        let recipe = EditRecipe(quarterTurns: 1, straighten: 7, crop: CGRect(x: 0.1, y: 0.2, width: 0.3, height: 0.4))
+        let flipped = recipe.flippedHorizontally()
+        #expect(flipped.flipped)
+        #expect(flipped.straighten == -7)
+        #expect(abs(flipped.crop.minX - 0.6) < 0.0001)
+        let back = flipped.flippedHorizontally()
+        #expect(!back.flipped && back.straighten == 7 && back.quarterTurns == 1)
+        #expect(abs(back.crop.minX - 0.1) < 0.0001 && abs(back.crop.width - 0.3) < 0.0001)
+        #expect(!flipped.hasNoGeometry)
+    }
+
+    @Test func aMirroredPhotoStillTurnsLeft() {
+        // Turning left after a flip must look the same as flipping after turning right three times over.
+        let image = CIImage(color: .blue).cropped(to: CGRect(x: 0, y: 0, width: 40, height: 20))
+        let flippedThenLeft = EditRecipe().flippedHorizontally().rotatedLeft().apply(to: image)
+        #expect(flippedThenLeft.extent.size == CGSize(width: 20, height: 40))
+        #expect(EditRecipe().flippedHorizontally().rotatedLeft().quarterTurns == 3)
+    }
+
+    @Test func olderRecipesStillOpen() throws {
+        let old = #"{"quarterTurns":1,"crop":[[0,0],[1,1]]}"#.data(using: .utf8)!
+        let recipe = try JSONDecoder().decode(EditRecipe.self, from: old)
+        #expect(recipe.quarterTurns == 1 && !recipe.flipped && recipe.straighten == 0)
+    }
+
+    @Test func autoLevelsATiltedHorizon() throws {
+        // Sky over sea, then tilted 8° clockwise by straightening; levelling should turn it back.
+        let size = CGRect(x: 0, y: 0, width: 600, height: 400)
+        let sky = CIImage(color: CIColor(red: 0.5, green: 0.7, blue: 1)).cropped(to: CGRect(x: 0, y: 200, width: 600, height: 200))
+        let sea = CIImage(color: CIColor(red: 0.05, green: 0.2, blue: 0.35)).cropped(to: CGRect(x: 0, y: 0, width: 600, height: 200))
+        let scene = sky.composited(over: sea).cropped(to: size)
+        let tilted = EditRecipe(straighten: 8).apply(to: scene)
+        let angle = try #require(PhotoEditing.levellingAngle(for: tilted))
+        #expect(abs(angle + 8) < 2, "levelling angle \(angle)")
+    }
+}
+
+struct CropAspectTests {
+    @Test func shapesTurnWithTheirOrientation() {
+        let wide = CGSize(width: 4000, height: 3000)
+        func ratio(_ aspect: CropAspect, _ size: CGSize, landscape: Bool) -> Double { Double(aspect.ratio(for: size, landscape: landscape) ?? -1) }
+        #expect(CropAspect.free.ratio(for: wide, landscape: true) == nil)
+        #expect(ratio(.square, wide, landscape: false) == 1)
+        #expect(abs(ratio(.sixteenNine, wide, landscape: true) - 16.0 / 9) < 0.0001)
+        #expect(abs(ratio(.sixteenNine, wide, landscape: false) - 9.0 / 16) < 0.0001)
+        // The photo's own shape, either way round.
+        #expect(abs(ratio(.original, wide, landscape: true) - 4.0 / 3) < 0.0001)
+        #expect(abs(ratio(.original, CGSize(width: 3000, height: 4000), landscape: false) - 3.0 / 4) < 0.0001)
+    }
+
+    @Test func degreesReadCleanly() {
+        #expect(MetroDial.degrees(0) == "0°")
+        #expect(MetroDial.degrees(12) == "+12°")
+        #expect(MetroDial.degrees(-3.46) == "-3.5°")
+        // The straighten ruler catches level within a degree or so.
+        #expect(MetroDial.value(from: 0, dragged: -4, range: -45...45, resting: 0) == 0)
+    }
+}

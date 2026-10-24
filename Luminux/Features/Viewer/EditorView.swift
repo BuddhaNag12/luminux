@@ -1,9 +1,12 @@
 import Photos
 import SwiftUI
 
-/// Crop, adjust and looks, saved as a PhotoKit edit that reopens with its sliders where they were left
-/// (and reverts here or in Photos). With iPhone Duo open or half-folded, the photo takes the top of the screen and the
-/// controls spread over the bottom.
+/// Crop, light, colour, effects and looks, saved as a PhotoKit edit that reopens with its values where they were left
+/// (and reverts here or in Photos). Each adjustment is changed on a ruler dial, or by swiping across the photo; holding
+/// the photo, or the compare button, shows the original.
+///
+/// One editor for every screen: on iPhone the tools sit under the photo; on iPhone Duo half-folded the photo takes the
+/// raised half and the tools the flat one; open flat and wide, photo and tools sit side by side.
 struct EditorView: View {
     let asset: PHAsset
 
@@ -11,17 +14,37 @@ struct EditorView: View {
     @Environment(\.metro) private var metro
     @Environment(\.dismiss) private var dismiss
     @Environment(\.splitY) private var splitY
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var session: EditSession?
-    /// Where the photo area starts, so it can end on the split line.
-    @State private var photoTop: CGFloat = 0
     @State private var recipe = EditRecipe()
     @State private var preview: UIImage?
     /// Whether `preview` was rendered with the crop applied; the crop handles only fit an uncropped preview.
     @State private var previewIsCropped = false
-    @State private var mode: EditMode = .adjust
-    @State private var selected: Adjustment = .exposure
+    @State private var mode: EditMode = .crop
+    /// The adjustment last picked in each group, so switching groups and back returns to it.
+    @State private var selected: [AdjustmentGroup: Adjustment] = [:]
     @State private var aspect: CropAspect = .free
+    /// The crop shape's orientation when picked by hand; nil follows the photo's.
+    @State private var cropLandscape: Bool?
+    @State private var isLevelling = false
+    /// A turn or flip waiting for its new preview, so the photo can animate into it.
+    @State private var pendingTurn: PhotoTurn?
+    /// 1 when the new preview is shown turned back to where the old one was, easing to 0.
+    @State private var turnProgress: Double = 0
+    @State private var flipProgress: Double = 0
+    /// The crop handles wait until the photo has turned into place.
+    @State private var isTurning = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private enum PhotoTurn { case rotate, flip }
+    /// Said under the crop tools for a moment, e.g. when auto finds no horizon.
+    @State private var cropNote: String?
+    /// Held down on the photo.
     @State private var showsOriginal = false
+    /// The compare button keeps the original showing.
+    @State private var pinsOriginal = false
+    /// The value a swipe across the photo started from, while one is under way.
+    @State private var swipeStart: Double?
     @State private var lookThumbnails: [Look?: UIImage] = [:]
     @State private var isRendering = false
     @State private var needsRender = false
@@ -29,6 +52,34 @@ struct EditorView: View {
     @State private var failed = false
     @State private var couldNotOpen = false
     @State private var isAppBarExpanded = false
+    @State private var size: CGSize = .zero
+    /// Where the photo starts, so it can end on the split line.
+    @State private var photoTop: CGFloat = 0
+
+    private enum Arrangement {
+        /// iPhone, and iPhone Duo closed: tools under the photo.
+        case stacked
+        /// iPhone Duo half-folded or open upright: the photo above the line, the tools below.
+        case split(CGFloat)
+        /// iPhone Duo open flat and wide: photo and tools side by side.
+        case sideBySide
+    }
+
+    private var arrangement: Arrangement {
+        if sizeClass == .regular, size.width > size.height { return .sideBySide }
+        if let splitY { return .split(splitY) }
+        return .stacked
+    }
+
+    private var isRoomy: Bool {
+        if case .stacked = arrangement { return false }
+        return true
+    }
+
+    /// The adjustment the dial and a swipe change; nil in crop and looks.
+    private var active: Adjustment? {
+        mode.group.map { selected[$0] ?? $0.adjustments[0] }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -37,50 +88,31 @@ struct EditorView: View {
                 .font(.metroTitle)
                 .padding(.leading, -3)
 
-            GeometryReader { geo in
-                if let preview {
-                    let imageRect = fittedRect(for: preview.size, in: geo.size)
-                    Image(uiImage: preview)
-                        .resizable()
-                        .frame(width: imageRect.width, height: imageRect.height)
-                        .position(x: imageRect.midX, y: imageRect.midY)
-                    if mode == .crop && !previewIsCropped {
-                        CropOverlay(crop: $recipe.crop, aspect: aspect, imageRect: imageRect, imageSize: preview.size)
-                    }
-                } else if couldNotOpen {
-                    Text("Couldn't open this photo for editing.")
-                        .font(.metroBody)
-                        .foregroundStyle(metro.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    MetroProgress().frame(maxWidth: .infinity, maxHeight: .infinity)
+            switch arrangement {
+            case .stacked:
+                photoPane
+                    .padding(.vertical, 12)
+                toolPanel
+                    // A fixed height keeps the photo still as the tools change.
+                    .frame(height: 188, alignment: .top)
+                    .padding(.bottom, 8)
+            case .split(let line):
+                photoPane
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { photoTop = $0 }
+                    // Ends a little above the line, and the tools start well below it: nothing to touch in the fold.
+                    .frame(height: max(line - photoTop - 8, 120))
+                    .padding(.top, 12)
+                toolPanel
+                    .padding(.top, 28)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            case .sideBySide:
+                HStack(alignment: .top, spacing: 40) {
+                    photoPane
+                    toolPanel
+                        .frame(maxHeight: .infinity, alignment: .top)
                 }
+                .padding(.top, 12)
             }
-            .contentShape(Rectangle())
-            // Touch and hold to compare with the photo before adjustments.
-            .onLongPressGesture(minimumDuration: 0.15, maximumDistance: 40) {} onPressingChanged: { pressing in
-                if mode != .crop { showsOriginal = pressing }
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(showsOriginal ? "Original photo" : "Edited photo")
-            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { photoTop = $0 }
-            .frame(height: splitY.map { max($0 - photoTop, 120) })
-            .padding(.vertical, 12)
-
-            modeRow
-                .padding(.bottom, 10)
-
-            Group {
-                switch mode {
-                case .crop: aspectRow
-                case .adjust: if splitY == nil { adjustControls } else { allAdjustments }
-                case .looks: if splitY == nil { looksRow } else { looksGrid }
-                }
-            }
-            // A fixed height keeps the photo still as the mode changes; split, the controls fill the bottom half.
-            .frame(height: splitY == nil ? 96 : nil, alignment: .top)
-            .frame(maxHeight: splitY == nil ? nil : .infinity, alignment: .top)
-            .disabled(session == nil)
 
             if failed {
                 Text("Couldn't save this edit. Try again.")
@@ -93,9 +125,12 @@ struct EditorView: View {
         .padding(.top, 16)
         .foregroundStyle(metro.foreground)
         .background(metro.background)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .metroAppBar(
             [
-                AppBarButton(title: "rotate", systemImage: "rotate.left", isEnabled: session != nil) { rotate() },
+                AppBarButton(id: "compare", title: pinsOriginal ? "edited" : "compare", systemImage: pinsOriginal ? "eye.slash" : "eye", isEnabled: session != nil) {
+                    pinsOriginal.toggle()
+                },
                 AppBarButton(title: "save", systemImage: "checkmark", isEnabled: !isSaving && session != nil) { save() },
                 AppBarButton(title: "cancel", systemImage: "xmark") { dismiss() },
             ],
@@ -118,7 +153,6 @@ struct EditorView: View {
                 let session = try await library.editSession(for: asset)
                 self.session = session
                 recipe = session.recipe
-                if let look = recipe.look, look.adjustments == recipe.adjustments { mode = .looks }
                 requestRender()
                 await renderLookThumbnails(from: session.preview)
             } catch {
@@ -128,102 +162,263 @@ struct EditorView: View {
         .onChange(of: renderKey) { requestRender() }
     }
 
-    // MARK: Controls
+    // MARK: Photo
+
+    private var photoPane: some View {
+        GeometryReader { geo in
+            if let preview {
+                let imageRect = fittedRect(for: preview.size, in: geo.size)
+                // Turned back a quarter, the new photo sits as the old one did; this scale matches the old size.
+                let turnedBack = fittedRect(for: CGSize(width: preview.size.height, height: preview.size.width), in: geo.size)
+                let startScale = turnedBack.width / max(imageRect.height, 1)
+                Image(uiImage: preview)
+                    .resizable()
+                    .frame(width: imageRect.width, height: imageRect.height)
+                    // A flip swings the photo round like a card; a rotate turns it a quarter into place.
+                    .scaleEffect(x: 1 - 2 * flipProgress, y: 1)
+                    .rotationEffect(.degrees(90 * turnProgress))
+                    .scaleEffect(1 + (startScale - 1) * turnProgress)
+                    .position(x: imageRect.midX, y: imageRect.midY)
+                if mode == .crop && !previewIsCropped && !isTurning {
+                    CropOverlay(crop: $recipe.crop, ratio: cropRatio, imageRect: imageRect, imageSize: preview.size)
+                }
+            } else if couldNotOpen {
+                Text("Couldn't open this photo for editing.")
+                    .font(.metroBody)
+                    .foregroundStyle(metro.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                MetroProgress().frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .contentShape(Rectangle())
+        // Touch and hold to compare with the photo before adjustments.
+        .onLongPressGesture(minimumDuration: 0.15, maximumDistance: 40) {} onPressingChanged: { pressing in
+            if mode != .crop && swipeStart == nil { showsOriginal = pressing }
+        }
+        // Swiping across the photo nudges the adjustment on the dial, like Snapseed.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 8)
+                .onChanged { drag in
+                    guard let active, abs(drag.translation.width) > abs(drag.translation.height) else { return }
+                    let start = swipeStart ?? recipe.adjustments[active]
+                    swipeStart = start
+                    showsOriginal = false
+                    // Rightward raises it; the dial's own drag runs the other way, as its ruler moves with the finger.
+                    value(of: active).wrappedValue = MetroDial.value(from: start, dragged: -drag.translation.width, range: active.range, resting: 0)
+                }
+                .onEnded { _ in swipeStart = nil },
+            including: mode == .crop ? .subviews : .all
+        )
+        .overlay(alignment: .top) {
+            if swipeStart != nil, let active {
+                Text("\(active.title) \(MetroDial.text(for: recipe.adjustments[active]))")
+                    .font(.metro(17, .semilight))
+                    .monospacedDigit()
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(metro.background.opacity(0.75))
+                    .padding(.top, 8)
+                    .transition(.opacity)
+            }
+        }
+        .animation(MetroMotion.fade, value: swipeStart == nil)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(showsOriginal || pinsOriginal ? "Original photo" : "Edited photo")
+    }
+
+    // MARK: Tools
+
+    private var toolPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            modeRow
+            Group {
+                switch mode {
+                case .crop: cropControls
+                case .looks: isRoomy ? AnyView(looksGrid) : AnyView(looksRow)
+                default:
+                    if let group = mode.group, let active {
+                        adjustmentChips(group)
+                        MetroDial(label: active.title, value: value(of: active), range: active.range, resting: 0)
+                            .padding(.top, isRoomy ? 8 : 0)
+                    }
+                }
+            }
+            .disabled(session == nil)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
     private var modeRow: some View {
-        HStack(spacing: 24) {
-            ForEach(EditMode.allCases) { option in
-                Button(option.rawValue) {
-                    withAnimation(MetroMotion.fade) { mode = option }
-                }
-                .font(.metro(24, .semilight))
-                .foregroundStyle(option == mode ? metro.foreground : metro.secondary)
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(option == mode ? .isSelected : [])
-            }
-        }
-    }
-
-    private var aspectRow: some View {
-        HStack(spacing: 20) {
-            ForEach(CropAspect.allCases) { option in
-                Button(option.title) { setAspect(option) }
-                    .font(.metro(17, .semilight))
-                    .foregroundStyle(option == aspect ? metro.accentColor : metro.foreground)
+        ScrollView(.horizontal) {
+            HStack(spacing: 22) {
+                ForEach(EditMode.allCases) { option in
+                    Button(option.rawValue) {
+                        withAnimation(MetroMotion.fade) { mode = option }
+                    }
+                    .font(.metro(24, .semilight))
+                    .foregroundStyle(option == mode ? metro.foreground : metro.secondary)
                     .buttonStyle(.plain)
-                    .accessibilityAddTraits(option == aspect ? .isSelected : [])
-            }
-        }
-    }
-
-    private var adjustControls: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 18) {
-                    ForEach(Adjustment.allCases) { adjustment in
-                        Button {
-                            selected = adjustment
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(adjustment.title)
-                                // Marks the sliders that have been moved.
-                                if recipe.adjustments[adjustment] != 0 {
-                                    Rectangle().fill(metro.accentColor).frame(width: 5, height: 5)
-                                }
-                            }
-                            .font(.metro(17, .semilight))
-                            .foregroundStyle(adjustment == selected ? metro.accentColor : metro.foreground)
-                            .frame(minHeight: 32)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(adjustment == selected ? .isSelected : [])
-                        .accessibilityValue(recipe.adjustments[adjustment] == 0 ? "" : percent(recipe.adjustments[adjustment]))
-                    }
+                    .accessibilityAddTraits(option == mode ? .isSelected : [])
                 }
             }
-            .scrollIndicators(.hidden)
-
-            slider(selected)
-        }
-    }
-
-    /// Every adjustment at once, each with its own slider, when there's room for them all.
-    private var allAdjustments: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                ForEach(Adjustment.allCases) { adjustment in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(adjustment.title)
-                            .font(.metro(17, .semilight))
-                            .foregroundStyle(recipe.adjustments[adjustment] == 0 ? metro.foreground : metro.accentColor)
-                        slider(adjustment)
-                    }
-                }
-            }
-            .padding(.bottom, 12)
         }
         .scrollIndicators(.hidden)
     }
 
-    private func slider(_ adjustment: Adjustment) -> some View {
-        HStack(spacing: 12) {
-            MetroSlider(
-                label: adjustment.title,
-                value: Binding {
-                    recipe.adjustments[adjustment]
-                } set: {
-                    recipe.adjustments[adjustment] = $0
-                    recipe.look = nil
-                },
-                range: adjustment.range,
-                resting: 0
+    /// Rotate, flip, auto-straighten and the crop shapes as tiles, over a ruler for straightening, like Photos and
+    /// Snapseed.
+    private var cropControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if isRoomy {
+                HStack(spacing: 6) { cropTools }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 6)], alignment: .leading, spacing: 6) {
+                    aspectTiles
+                }
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 6) {
+                        cropTools
+                        Rectangle().fill(metro.secondary.opacity(0.4)).frame(width: 1, height: 36).padding(.horizontal, 4)
+                        aspectTiles
+                    }
+                }
+                .scrollIndicators(.hidden)
+            }
+            MetroDial(
+                label: "straighten",
+                value: Binding { recipe.straighten } set: { recipe.straighten = $0 },
+                range: EditRecipe.straightenRange,
+                ticks: 90,
+                format: { MetroDial.degrees($0) }
             )
-            Text(percent(recipe.adjustments[adjustment]))
-                .font(.metroCaption)
-                .monospacedDigit()
-                .foregroundStyle(metro.secondary)
-                .frame(width: 40, alignment: .trailing)
-                .accessibilityHidden(true)
+            .padding(.top, isRoomy ? 8 : 0)
+            if let cropNote {
+                Text(cropNote)
+                    .font(.metroCaption)
+                    .foregroundStyle(metro.secondary)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var cropTools: some View {
+        cropTile("rotate", systemImage: "rotate.left") { rotate() }
+        cropTile("flip", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right") {
+            pendingTurn = .flip
+            recipe = recipe.flippedHorizontally()
+        }
+        cropTile(isLevelling ? "levelling" : "auto", systemImage: "level", isEnabled: !isLevelling) { level() }
+        cropTile(isLandscapeCrop ? "landscape" : "portrait", systemImage: isLandscapeCrop ? "rectangle" : "rectangle.portrait",
+                 isEnabled: aspect != .free && aspect != .square) {
+            cropLandscape = !isLandscapeCrop
+            setAspect(aspect)
+        }
+        cropTile("reset", systemImage: "arrow.counterclockwise", isEnabled: !recipe.hasNoGeometry) { resetGeometry() }
+    }
+
+    private var aspectTiles: some View {
+        ForEach(CropAspect.allCases) { option in
+            Button { setAspect(option) } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    aspectShape(option)
+                    Text(option.title)
+                        .font(.metro(14, .semilight))
+                        .lineLimit(1)
+                }
+                .padding(8)
+                .frame(minWidth: 68, maxWidth: isRoomy ? .infinity : nil, minHeight: 52, alignment: .topLeading)
+                .foregroundStyle(option == aspect ? metro.onAccent : metro.foreground)
+                .background(option == aspect ? metro.accentColor : metro.chrome)
+            }
+            .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
+            .accessibilityLabel(option == .free ? "free crop" : "\(option.title) crop")
+            .accessibilityAddTraits(option == aspect ? .isSelected : [])
+        }
+    }
+
+    /// A small outline of the crop shape, turned the way the crop is.
+    private func aspectShape(_ option: CropAspect) -> some View {
+        let ratio = option.ratio(for: rotatedSize, landscape: isLandscapeCrop) ?? 1
+        let side: CGFloat = 16
+        return Rectangle()
+            .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: option == .free ? [3, 2] : []))
+            .frame(width: ratio >= 1 ? side : side * ratio, height: ratio >= 1 ? side / ratio : side)
+            .frame(width: side, height: side, alignment: .leading)
+    }
+
+    private func cropTile(_ title: String, systemImage: String, isEnabled: Bool = true, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 16, weight: .light))
+                    .frame(height: 16)
+                Text(title)
+                    .font(.metro(14, .semilight))
+                    .lineLimit(1)
+            }
+            .padding(8)
+            .frame(minWidth: 68, maxWidth: isRoomy ? .infinity : nil, minHeight: 52, alignment: .topLeading)
+            .foregroundStyle(metro.foreground)
+            .background(metro.chrome)
+            .opacity(isEnabled ? 1 : 0.4)
+        }
+        .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
+        .disabled(!isEnabled)
+        .accessibilityLabel(title)
+    }
+
+    /// The group's adjustments as tiles, each showing its value; the picked one is on the dial.
+    @ViewBuilder
+    private func adjustmentChips(_ group: AdjustmentGroup) -> some View {
+        if isRoomy {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 6)], alignment: .leading, spacing: 6) {
+                ForEach(group.adjustments) { chip($0, in: group) }
+            }
+        } else {
+            ScrollView(.horizontal) {
+                HStack(spacing: 6) {
+                    ForEach(group.adjustments) { chip($0, in: group) }
+                }
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    private func chip(_ adjustment: Adjustment, in group: AdjustmentGroup) -> some View {
+        let isActive = adjustment == active
+        let amount = recipe.adjustments[adjustment]
+        return Button {
+            withAnimation(MetroMotion.snappy) { selected[group] = adjustment }
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(adjustment.title)
+                    .font(.metro(15, .semilight))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(amount == 0 ? " " : MetroDial.text(for: amount))
+                    .font(.metroCaption)
+                    .monospacedDigit()
+                    .opacity(0.85)
+            }
+            .padding(8)
+            .frame(minWidth: 92, maxWidth: isRoomy ? .infinity : nil, minHeight: 52, alignment: .topLeading)
+            .foregroundStyle(isActive ? metro.onAccent : metro.foreground)
+            .background(isActive ? metro.accentColor : metro.chrome)
+        }
+        .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
+        .accessibilityLabel(adjustment.title)
+        .accessibilityValue(amount == 0 ? "" : percent(amount))
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+
+    private func value(of adjustment: Adjustment) -> Binding<Double> {
+        Binding {
+            recipe.adjustments[adjustment]
+        } set: {
+            recipe.adjustments[adjustment] = $0
+            recipe.look = nil
         }
     }
 
@@ -306,7 +501,7 @@ struct EditorView: View {
     }
 
     private var renderKey: RenderKey {
-        RenderKey(recipe: recipe, includesCrop: mode != .crop, original: showsOriginal)
+        RenderKey(recipe: recipe, includesCrop: mode != .crop, original: showsOriginal || pinsOriginal)
     }
 
     /// Renders the newest state once the previous render finishes, so a slider drag never queues up renders.
@@ -328,8 +523,27 @@ struct EditorView: View {
                     PhotoEditing.preview(of: source.value, recipe: key.recipe, includingCrop: key.includesCrop).map(UncheckedBox.init)
                 }.value
                 if let rendered {
-                    preview = rendered.value
-                    previewIsCropped = key.includesCrop
+                    if let turn = pendingTurn, !reduceMotion {
+                        pendingTurn = nil
+                        // Show the new photo turned back to where the old one was, then let it turn into place.
+                        var instant = Transaction()
+                        instant.disablesAnimations = true
+                        withTransaction(instant) {
+                            preview = rendered.value
+                            previewIsCropped = key.includesCrop
+                            if turn == .rotate { turnProgress = 1 } else { flipProgress = 1 }
+                            isTurning = true
+                        }
+                        withAnimation(.timingCurve(Feather.decelerate, duration: turn == .rotate ? 0.4 : 0.45)) {
+                            turnProgress = 0
+                            flipProgress = 0
+                        } completion: {
+                            withAnimation(MetroMotion.fade) { isTurning = false }
+                        }
+                    } else {
+                        preview = rendered.value
+                        previewIsCropped = key.includesCrop
+                    }
                 }
             } while needsRender
             isRendering = false
@@ -365,22 +579,65 @@ struct EditorView: View {
     }
 
     private func rotate() {
+        pendingTurn = .rotate
         recipe = recipe.rotatedLeft()
+        // The photo turned, so a shape picked by hand turns with it.
+        cropLandscape = cropLandscape.map { !$0 }
         if aspect != .free { setAspect(aspect) }
     }
 
     private func resetAll() {
         recipe = EditRecipe()
         aspect = .free
+        cropLandscape = nil
     }
+
+    /// Undoes turns, flip, straightening and crop; adjustments stay.
+    private func resetGeometry() {
+        recipe = EditRecipe(adjustments: recipe.adjustments, look: recipe.look)
+        aspect = .free
+        cropLandscape = nil
+    }
+
+    private var isLandscapeCrop: Bool { cropLandscape ?? (rotatedSize.width >= rotatedSize.height) }
+    private var cropRatio: CGFloat? { aspect.ratio(for: rotatedSize, landscape: isLandscapeCrop) }
 
     private func setAspect(_ option: CropAspect) {
         aspect = option
-        guard let ratio = option.ratio(for: rotatedSize) else {
+        guard let ratio = option.ratio(for: rotatedSize, landscape: isLandscapeCrop) else {
             recipe.crop = CGRect(x: 0, y: 0, width: 1, height: 1)
             return
         }
         recipe.crop = CropMath.centered(ratio: ratio, imageSize: rotatedSize)
+    }
+
+    /// Finds the horizon and straightens it, like Photos' auto.
+    private func level() {
+        guard let session else { return }
+        var unstraightened = recipe
+        unstraightened.straighten = 0
+        unstraightened.adjustments = Adjustments()
+        let image = UncheckedBox(value: unstraightened.apply(to: session.preview, includingCrop: false))
+        isLevelling = true
+        Task {
+            let angle = await Task.detached(priority: .userInitiated) { PhotoEditing.levellingAngle(for: image.value) }.value
+            isLevelling = false
+            if let angle {
+                withAnimation(MetroMotion.standard) { recipe.straighten = angle }
+                showCropNote(angle == 0 ? "Already level." : nil)
+            } else {
+                showCropNote("No horizon found to level.")
+            }
+        }
+    }
+
+    private func showCropNote(_ note: String?) {
+        withAnimation(MetroMotion.fade) { cropNote = note }
+        guard note != nil else { return }
+        Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            withAnimation(MetroMotion.fade) { cropNote = nil }
+        }
     }
 
     private func save() {
@@ -417,12 +674,14 @@ struct EditorView: View {
 }
 
 enum EditMode: String, CaseIterable, Identifiable {
-    case crop, adjust, looks
+    case crop, light, colour, effects, looks
     var id: String { rawValue }
+    /// The adjustments this tab shows on the dial; nil for crop and looks.
+    var group: AdjustmentGroup? { AdjustmentGroup(rawValue: rawValue) }
 }
 
 enum CropAspect: String, CaseIterable, Identifiable {
-    case free, original, square, wide
+    case free, original, square, fourThree, threeTwo, sixteenNine, fiveFour, sevenFive
 
     var id: String { rawValue }
 
@@ -431,18 +690,31 @@ enum CropAspect: String, CaseIterable, Identifiable {
         case .free: "free"
         case .original: "original"
         case .square: "square"
-        case .wide: "16:9"
+        case .fourThree: "4:3"
+        case .threeTwo: "3:2"
+        case .sixteenNine: "16:9"
+        case .fiveFour: "5:4"
+        case .sevenFive: "7:5"
         }
     }
 
-    /// Width over height in pixels; nil leaves the crop unconstrained.
-    func ratio(for imageSize: CGSize) -> CGFloat? {
+    /// Long side over short side; nil when the shape is free.
+    func longOverShort(for imageSize: CGSize) -> CGFloat? {
         switch self {
         case .free: nil
-        case .original: imageSize.width / max(imageSize.height, 1)
+        case .original: max(imageSize.width, imageSize.height) / max(min(imageSize.width, imageSize.height), 1)
         case .square: 1
-        case .wide: imageSize.width >= imageSize.height ? 16 / 9 : 9 / 16
+        case .fourThree: 4 / 3
+        case .threeTwo: 3 / 2
+        case .sixteenNine: 16 / 9
+        case .fiveFour: 5 / 4
+        case .sevenFive: 7 / 5
         }
+    }
+
+    /// Width over height in pixels, wide or tall as asked; nil leaves the crop unconstrained.
+    func ratio(for imageSize: CGSize, landscape: Bool) -> CGFloat? {
+        longOverShort(for: imageSize).map { landscape ? $0 : 1 / $0 }
     }
 }
 
@@ -499,7 +771,7 @@ nonisolated enum CropMath {
 
 private struct CropOverlay: View {
     @Binding var crop: CGRect
-    let aspect: CropAspect
+    let ratio: CGFloat?
     let imageRect: CGRect
     let imageSize: CGSize
 
@@ -521,6 +793,18 @@ private struct CropOverlay: View {
                 path.addRect(frame)
             }
             .fill(.black.opacity(0.55), style: FillStyle(eoFill: true))
+            .allowsHitTesting(false)
+
+            // Thirds, for lining things up while cropping and straightening.
+            Path { path in
+                for third in [1.0 / 3, 2.0 / 3] {
+                    path.move(to: CGPoint(x: frame.minX + frame.width * third, y: frame.minY))
+                    path.addLine(to: CGPoint(x: frame.minX + frame.width * third, y: frame.maxY))
+                    path.move(to: CGPoint(x: frame.minX, y: frame.minY + frame.height * third))
+                    path.addLine(to: CGPoint(x: frame.maxX, y: frame.minY + frame.height * third))
+                }
+            }
+            .stroke(.white.opacity(0.35), lineWidth: 0.5)
             .allowsHitTesting(false)
 
             Rectangle()
@@ -562,7 +846,7 @@ private struct CropOverlay: View {
                     x: startCorner.x + value.translation.width / imageRect.width,
                     y: startCorner.y + value.translation.height / imageRect.height
                 )
-                crop = CropMath.drag(start, corner: corner, to: point, ratio: aspect.ratio(for: imageSize), imageSize: imageSize)
+                crop = CropMath.drag(start, corner: corner, to: point, ratio: ratio, imageSize: imageSize)
             }
             .onEnded { _ in dragStart = nil }
     }
