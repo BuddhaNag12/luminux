@@ -40,6 +40,7 @@ extension View {
         hidden()
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .leading) { fixedSize() }
+            .fadesBeforeTrailingInset()
             .clipped()
     }
 }

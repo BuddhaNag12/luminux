@@ -148,6 +148,7 @@ struct Pivot<Content: View>: View {
                 .offset(x: -headerOffset(count: titles.count))
             }
             .clipped()
+            .fadesBeforeTrailingInset()
     }
 
     private func headerOpacity(_ index: Int) -> Double {

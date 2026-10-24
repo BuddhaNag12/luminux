@@ -31,6 +31,8 @@ struct Panorama<Background: View, Content: View>: View {
 
     /// How much of the next panel shows at the right edge.
     static var peek: CGFloat { 44 }
+    /// A panel's header line, from the top of the panels.
+    private static var headerHeight: CGFloat { 48 }
 
     @State private var scrollOffset: CGFloat = 0
     @State private var scrollRange: CGFloat = 0
@@ -39,6 +41,8 @@ struct Panorama<Background: View, Content: View>: View {
     @State private var titleWidth: CGFloat = 0
     /// What the app bar and home indicator cover, measured before the panels extend under them.
     @State private var bottomInset: CGFloat = 0
+    /// The status bar's column down the side of iPhone Duo's screens; zero on other iPhones.
+    @State private var trailingInset: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.foldX) private var foldX
@@ -124,11 +128,31 @@ struct Panorama<Background: View, Content: View>: View {
                     } action: { _, newValue in
                         scrollRange = newValue
                     }
+                    // The next panel's header peeks in under the status bar's column; it fades out before the
+                    // column, like the pivot's headers. Below the headers the panels still show through.
+                    .mask {
+                        Color.black
+                            .ignoresSafeArea()
+                            .overlay(alignment: .topTrailing) {
+                                if trailingInset > 0 {
+                                    HStack(spacing: 0) {
+                                        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                                            .frame(width: MetroMetrics.statusBarFade)
+                                        Color.black.frame(width: trailingInset)
+                                    }
+                                    .frame(height: Self.headerHeight)
+                                    .blendMode(.destinationOut)
+                                    .ignoresSafeArea(edges: .trailing)
+                                }
+                            }
+                            .compositingGroup()
+                    }
                 }
                 // Panels run under the app bar; their content can still scroll clear of it.
                 .ignoresSafeArea(.container, edges: .bottom)
             }
             .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.trailing } action: { trailingInset = $0 }
             .onChange(of: panelWidth, initial: true) { old, width in
                 self.panelWidth = width
                 // Opening or closing iPhone Duo resizes the panels; stay on the one that was showing.

@@ -84,6 +84,38 @@ enum MetroMetrics {
     static let gutter: CGFloat = 4
     static let appBarHeight: CGFloat = 56
     static let appBarButton: CGFloat = 48
+    /// How far headers fade out before the status bar's column down the side of iPhone Duo's screens, rather than
+    /// being cut off mid-letter against it.
+    static let statusBarFade: CGFloat = 40
+}
+
+extension View {
+    /// Fades this row out before the trailing safe area when there is one (the status bar's column on iPhone Duo);
+    /// elsewhere it runs to the screen's edge as before.
+    func fadesBeforeTrailingInset() -> some View {
+        modifier(TrailingInsetFade())
+    }
+}
+
+private struct TrailingInsetFade: ViewModifier {
+    @State private var inset: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        Group {
+            if inset > 0 {
+                content.mask {
+                    HStack(spacing: 0) {
+                        Color.black
+                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                            .frame(width: MetroMetrics.statusBarFade)
+                    }
+                }
+            } else {
+                content
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.trailing } action: { inset = $0 }
+    }
 }
 
 extension EnvironmentValues {
