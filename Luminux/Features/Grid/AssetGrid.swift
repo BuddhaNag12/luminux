@@ -112,6 +112,7 @@ struct AssetGrid: View {
     /// A sixth of the screen: small enough that little is drawn off screen (at 15 columns every extra row is 15
     /// photos), big enough that a fast scroll rebuilds now and then rather than every frame.
     private static let bandsPerScreen: CGFloat = 6
+    private static let titledInset: CGFloat = 8
 
     var body: some View {
         let assets = library.assets(in: source)
@@ -135,7 +136,6 @@ struct AssetGrid: View {
                     if let sections {
                         ForEach(layout.headers(in: rendered), id: \.position) { slot in
                             header(sections[slot.position], assets: assets)
-                                .padding(.horizontal, MetroMetrics.margin)
                                 .metroFeather(row: slot.row, hingeX: 0)
                                 .placed(slot.frame)
                         }
@@ -210,6 +210,9 @@ struct AssetGrid: View {
                 }
                 jumpTarget = nil
             }
+            // A grid under month titles sits in from the edges, lined up with them. Insetting the whole scroll view keeps
+            // every gesture's coordinates the grid's own.
+            .padding(.horizontal, sections == nil ? 0 : Self.titledInset)
             .clipped()
         .overlay(alignment: .top) {
             if showsProNote { proNote.padding(.horizontal, MetroMetrics.margin) }
@@ -908,7 +911,9 @@ struct AssetGrid: View {
                 .transition(.opacity)
                 .accessibilityLabel(selectedCount == ids.count ? "Clear \(section.title())" : "Select all of \(section.title())")
             }
+            Spacer(minLength: 0)
         }
+        .frame(minHeight: GridLayout.headerHeight, alignment: .bottomLeading)
     }
 }
 
@@ -1513,7 +1518,8 @@ private struct MonthTitle: View {
             .lineLimit(1)
             // Its row's height is fixed (the grid works out where everything goes), so the name can only grow so far.
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-            .padding(.bottom, 8)
-            .frame(maxWidth: .infinity, minHeight: GridLayout.headerHeight, alignment: .bottomLeading)
+            // Just the name and a little around it can be tapped, not the whole row.
+            .padding(.vertical, 8)
+            .padding(.trailing, 8)
     }
 }

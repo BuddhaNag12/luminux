@@ -37,6 +37,8 @@ nonisolated enum Feather {
 
     /// How long a full exit takes, so a popped page can be removed once its items are gone.
     static var exitTime: Double { exitDuration + Double(visibleRows / 2) * exitRowDelay }
+    /// How long a page's entrance takes, so heavy views (a map) can wait until its lines have settled.
+    static var enterTime: Double { enterBaseDelay + Double(visibleRows) * rowDelay + enterDuration }
 
     static func angle(for state: FeatherState) -> Double {
         switch state {
@@ -117,6 +119,12 @@ extension View {
         modifier(FeatherItem(row: row, column: column, hingeX: hingeX))
     }
 
+    /// For a live platform view (a map): fades with its page instead of moving. Turning or scattering one re-clipped
+    /// it inside its scroll view on every frame, and MapKit laid itself out again each time.
+    func metroFeatherFade() -> some View {
+        modifier(FeatherFade())
+    }
+
     /// Drives the feathered items inside: they turn in once on appear, then follow `restingState`.
     func featherScope(_ restingState: FeatherState = .shown) -> some View {
         modifier(FeatherScope(restingState: restingState))
@@ -164,6 +172,16 @@ private struct FeatherScope: ViewModifier {
     private func move(to state: FeatherState) {
         guard state != context.state else { return }
         context = FeatherContext(state: state, previous: context.state)
+    }
+}
+
+private struct FeatherFade: ViewModifier {
+    @Environment(\.feather) private var feather
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(feather.state == .shown ? 1 : 0)
+            .animation(.easeOut(duration: 0.2).delay(feather.state == .shown ? Feather.revealBaseDelay : 0), value: feather.state)
     }
 }
 
@@ -257,9 +275,11 @@ private struct FeatherScatter: ViewModifier {
             // Like marbles thrown at a mirror: each item comes out of the screen toward you, flying outward from the
             // centre on a slightly different line. The variation comes from its position, so it stays the same each
             // time.
-            let seed = Int(abs(frame.minX) * 7 + abs(frame.minY) * 13)
+            // A view mid-layout (a map, say) can report an infinite frame; it just gets the plain path.
+            let mix = abs(frame.minX) * 7 + abs(frame.minY) * 13
+            let seed = mix.isFinite ? Int(mix.truncatingRemainder(dividingBy: 1_000_000)) : 0
             let swerve = Angle.degrees(Double(seed % 41) - 20)
-            var away = CGVector(dx: frame.midX - page.width / 2, dy: frame.midY - page.height / 2)
+            var away = mix.isFinite ? CGVector(dx: frame.midX - page.width / 2, dy: frame.midY - page.height / 2) : CGVector(dx: 0, dy: -1)
             let length = max(hypot(away.dx, away.dy), 1)
             // Items near the centre still fly somewhere, not just grow in place.
             let reach = max(length, 60) * 0.6
