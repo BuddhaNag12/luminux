@@ -11,6 +11,8 @@ struct ViewerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ProStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(Hinge.self) private var hinge: Hinge?
+    @Environment(\.foldY) private var foldY
     @State private var index: Int?
     @State private var showsChrome = true
     @State private var isAppBarExpanded = false
@@ -42,7 +44,9 @@ struct ViewerView: View {
     @State private var arrivingID: String?
     @State private var arrivingFrom: CGFloat = 0
 
-    private var panelHeight: CGFloat { (screenHeight * 0.55).rounded() }
+    /// Stood up like a tent, iPhone Duo shows the photo above the fold and its details below it.
+    private var tentFoldY: CGFloat? { hinge?.isPartiallyOpen == true ? foldY : nil }
+    private var panelHeight: CGFloat { (tentFoldY.map { screenHeight - $0 } ?? screenHeight * 0.55).rounded() }
     private var chromeVisible: Bool { showsChrome && dismissDrag == 0 && !isPanelMounted }
 
     init(request: ViewerRequest) {
@@ -154,6 +158,7 @@ struct ViewerView: View {
         .statusBarHidden(!showsChrome)
         // The zoom transition's own swipe-down would close the viewer instead of the panel.
         .interactiveDismissDisabled(isPanelMounted || isLiftingSubject)
+        .onChange(of: tentFoldY != nil) { _, isTent in setDetails(open: isTent) }
         .onChange(of: chromeVisible) { _, visible in
             if !visible { isAppBarExpanded = false }
         }

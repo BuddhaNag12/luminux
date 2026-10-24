@@ -100,6 +100,11 @@ struct MetroStack<Root: View, Destination: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var backProgress: CGFloat = 0
     @State private var width: CGFloat = 1
+    @State private var topInset: CGFloat = 0
+
+    /// Room above every page's first line. iPhone Duo open and sideways puts the status bar down the side, leaving no
+    /// top inset, and the "LUMINUX" line sat against the screen's edge.
+    private static var minimumTopInset: CGFloat { 20 }
 
     var body: some View {
         ZStack {
@@ -110,6 +115,9 @@ struct MetroStack<Root: View, Destination: View>: View {
                     .transition(reduceMotion ? .opacity : .identity)
             }
         }
+        .safeAreaPadding(.top, max(Self.minimumTopInset - topInset, 0))
+        // Measured outside the padding, so it reads the screen's own inset.
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = max($0, 1) }
         .overlay(alignment: .leading) {
             if !navigator.path.isEmpty {

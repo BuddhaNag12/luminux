@@ -82,6 +82,9 @@ struct MetroAppBar: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(isExpanded ? "Less" : "More")
             }
+            // To the screen's edge, past the status bar that runs down the side of iPhone Duo's open screen; it sits
+            // at the top, so the bottom corner is free.
+            .ignoresSafeArea(.container, edges: .horizontal)
 
             VStack(alignment: .leading, spacing: 0) {
                 if isExpanded {
@@ -113,7 +116,8 @@ struct MetroAppBar: View {
         }
         .frame(minHeight: MetroMetrics.appBarHeight, alignment: .top)
         .foregroundStyle(metro.foreground)
-        .background((isExpanded ? metro.appBarExpanded : metro.appBar).ignoresSafeArea(edges: .bottom))
+        // Out to the sides too: on iPhone Duo the status bar runs down one side, and the bar stopped short of it.
+        .background((isExpanded ? metro.appBarExpanded : metro.appBar).ignoresSafeArea(edges: [.bottom, .horizontal]))
     }
 
     private func collapse() {

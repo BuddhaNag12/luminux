@@ -126,8 +126,12 @@ struct AlbumsGrid: View {
     @Environment(Navigator.self) private var navigator
     @Environment(\.metro) private var metro
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+    /// Four across iPhone Duo's open screen, so the fold runs between albums.
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 12), count: sizeClass == .regular ? 4 : 2)
+    }
 
     var body: some View {
         ScrollView {

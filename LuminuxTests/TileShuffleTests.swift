@@ -25,6 +25,12 @@ struct TileShuffleTests {
         }
     }
 
+    @Test func peeksFollowEveryThirdStep() {
+        let items = TileShuffle.withPeeks(Array(1...6), every: 3) { $0 = -$0 }
+        #expect(items == [1, 2, 3, -3, 4, 5, 6, -6])
+        #expect(TileShuffle.withPeeks([Int](), every: 3) { $0 = 0 }.isEmpty)
+    }
+
     @Test func fewerPhotosThanSlotsStillFillsTheTile() {
         let steps = TileShuffle.steps(pool: ["a", "b"], slots: 4, count: 10)
         #expect(steps.allSatisfy { $0.slots.count == 4 })

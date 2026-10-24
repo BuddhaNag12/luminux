@@ -117,6 +117,8 @@ struct HubView: View {
     private var collection: some View {
         VStack(alignment: .leading, spacing: 16) {
             HubTileGrid(isEditing: $isEditingTiles, selected: $selectedTile)
+                // No wider than on the largest iPhone, so tiles keep their size on iPhone Duo's wide open screen.
+                .frame(maxWidth: 384, alignment: .leading)
                 .padding(.trailing, MetroMetrics.margin)
                 // The tiles drift against the background, so they seem to float above it.
                 .tiltParallax(-8 * settings.tiltStrength.scale)

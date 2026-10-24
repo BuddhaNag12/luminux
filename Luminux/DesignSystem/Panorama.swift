@@ -40,6 +40,8 @@ struct Panorama<Background: View, Content: View>: View {
     /// What the app bar and home indicator cover, measured before the panels extend under them.
     @State private var bottomInset: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.foldX) private var foldX
     @Environment(\.metro) private var metro
 
     private var leadingWidth: CGFloat { CGFloat(startPanel) * panelWidth }
@@ -66,7 +68,7 @@ struct Panorama<Background: View, Content: View>: View {
 
     var body: some View {
         GeometryReader { geo in
-            let panelWidth = geo.size.width - Self.peek
+            let panelWidth = panelWidth(geo)
 
             VStack(alignment: .leading, spacing: 0) {
                 panoramaTitle(title)
@@ -127,7 +129,11 @@ struct Panorama<Background: View, Content: View>: View {
                 .ignoresSafeArea(.container, edges: .bottom)
             }
             .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
-            .onChange(of: panelWidth, initial: true) { _, width in self.panelWidth = width }
+            .onChange(of: panelWidth, initial: true) { old, width in
+                self.panelWidth = width
+                // Opening or closing iPhone Duo resizes the panels; stay on the one that was showing.
+                if old > 0, old != width { position.scrollTo(id: scrolledPanel ?? startPanel, anchor: .leading) }
+            }
         }
         .onChange(of: scrolledPanel) { _, panel in
             if let panel { onPanelChange?(panel) }
@@ -141,7 +147,7 @@ struct Panorama<Background: View, Content: View>: View {
             // Separate reader so the background runs under the status bar and app bar too.
             GeometryReader { geo in
                 if let background {
-                    backgroundLayer(background, size: geo.size, panelWidth: geo.size.width - Self.peek)
+                    backgroundLayer(background, size: geo.size, panelWidth: panelWidth)
                 }
             }
             .ignoresSafeArea()
@@ -149,9 +155,17 @@ struct Panorama<Background: View, Content: View>: View {
         .background(metro.background)
     }
 
+    /// Two panels side by side on a wide screen. On iPhone Duo the first ends at the fold, so the fold runs between
+    /// them and the next panel fills the other half as its peek.
+    private func panelWidth(_ geo: GeometryProxy) -> CGFloat {
+        guard sizeClass == .regular else { return geo.size.width - Self.peek }
+        let toFold = foldX.map { $0 - geo.frame(in: .global).minX } ?? 0
+        return toFold > geo.size.width / 3 ? toFold : (geo.size.width - Self.peek) / 2
+    }
+
     private func panoramaTitle(_ text: String) -> some View {
         Text(text)
-            .font(.metroPanorama)
+            .font(sizeClass == .regular ? .metroPanoramaWide : .metroPanorama)
             .lineLimit(1)
             .fixedSize()
             .padding(.leading, MetroMetrics.margin + 4)
@@ -165,9 +179,10 @@ struct Panorama<Background: View, Content: View>: View {
     }
 
     private func backgroundLayer(_ background: Background, size: CGSize, panelWidth: CGFloat) -> some View {
-        // Wide enough to cover the screen through about four panels of parallax, plus the panels left of the start.
+        // Wide enough to cover the screen through all the panels' parallax (about four until they're measured), plus
+        // the panels left of the start.
         let leading = CGFloat(startPanel) * panelWidth * MetroMotion.backgroundParallax
-        let width = size.width + panelWidth * 4 * MetroMotion.backgroundParallax + leading
+        let width = size.width + max(maxOffset, panelWidth * 4) * MetroMotion.backgroundParallax + leading
         return background
             .frame(width: width, height: size.height)
             .clipped()
