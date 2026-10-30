@@ -48,7 +48,7 @@ struct PhotoSetView: View {
             .contentMargins(.bottom, bottomInset, for: .scrollContent)
             .ignoresSafeArea(.container, edges: .bottom)
         }
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom.rounded() } action: { bottomInset = $0 }
         .foregroundStyle(metro.foreground)
         .background(metro.background)
         .onChange(of: photoSet?.title, initial: true) { _, title in

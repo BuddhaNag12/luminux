@@ -114,7 +114,7 @@ private struct TrailingInsetFade: ViewModifier {
                 content
             }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.trailing } action: { inset = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.trailing.rounded() } action: { inset = $0 }
     }
 }
 
