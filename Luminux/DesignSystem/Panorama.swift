@@ -154,8 +154,8 @@ struct Panorama<Background: View, Content: View>: View {
                 // Panels run under the app bar; their content can still scroll clear of it.
                 .ignoresSafeArea(.container, edges: .bottom)
             }
-            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
-            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.trailing } action: { trailingInset = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom.rounded() } action: { bottomInset = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.trailing.rounded() } action: { trailingInset = $0 }
             .onChange(of: panelWidth, initial: true) { old, width in
                 self.panelWidth = width
                 // Opening or closing iPhone Duo resizes the panels; stay on the one that was showing.

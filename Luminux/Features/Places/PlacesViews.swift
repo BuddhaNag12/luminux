@@ -248,7 +248,7 @@ struct PlaceView: View {
         }
         // Anchored to the top, so a taller map can't shift its own top and grow without end.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom.rounded() } action: { bottomInset = $0 }
         .foregroundStyle(metro.foreground)
         .background(metro.background)
         .task {

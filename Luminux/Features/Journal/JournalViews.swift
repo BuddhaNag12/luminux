@@ -177,7 +177,7 @@ struct JournalEntryView: View {
                 .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in scrolled = y }
                 .overlay(alignment: .top) {
                     header(entry)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded(.up) } action: { headerHeight = $0 }
                         .offset(y: -scrolled)
                 }
                 .clipped()
@@ -194,7 +194,9 @@ struct JournalEntryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .foregroundStyle(metro.foreground)
         .background(metro.background)
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
+        // Whole points: with the note editor's keyboard coming up, the raw inset crept toward its value in ever smaller
+        // steps, each one laying the page out again, and the app hung. Every inset measured to lay a page out is rounded.
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom.rounded() } action: { bottomInset = $0 }
         .onChange(of: entry == nil) { _, isGone in
             // Deleting photos can take an entry under the minimum; leave instead of showing an empty page.
             if isGone, navigator.path.last == .journalEntry(entryID), navigator.viewer == nil { navigator.pop() }

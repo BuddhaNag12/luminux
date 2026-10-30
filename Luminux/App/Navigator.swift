@@ -126,7 +126,7 @@ struct MetroStack<Root: View, Destination: View>: View {
         }
         .safeAreaPadding(.top, max(Self.minimumTopInset - topInset, 0))
         // Measured outside the padding, so it reads the screen's own inset.
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top.rounded() } action: { topInset = $0 }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = max($0, 1) }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = max($0, 1) }
         .environment(\.featherStyle, zooms ? .zoom : .turnstile)
