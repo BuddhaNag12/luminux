@@ -7,6 +7,8 @@ struct HubTileGrid: View {
     @Binding var isEditing: Bool
     /// The tile showing its unpin and resize buttons.
     @Binding var selected: HubTileKind?
+    /// Shows only the first tiles; nil shows them all (always while editing, so every tile can be moved).
+    var limit: Int?
 
     @Environment(HubTiles.self) private var hubTiles
     @Environment(Navigator.self) private var navigator
@@ -28,7 +30,7 @@ struct HubTileGrid: View {
     private let spacing = MetroMetrics.gutter
 
     var body: some View {
-        let tiles = hubTiles.tiles
+        let tiles = limit.map { Array(hubTiles.tiles.prefix($0)) } ?? hubTiles.tiles
         let placements = TilePacking.place(tiles.map(\.size))
         HubTileLayout(placements: placements, spacing: spacing) {
             ForEach(Array(tiles.enumerated()), id: \.element.id) { index, tile in

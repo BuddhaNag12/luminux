@@ -30,12 +30,36 @@ nonisolated enum LiveTileStore {
 
     static var defaults: UserDefaults? { UserDefaults(suiteName: appGroup) }
 
+    /// Collections whose photos are copied in, ready for the widget to show.
     static var collections: [Collection] {
-        get {
-            guard let data = defaults?.data(forKey: collectionsKey) else { return [] }
-            return (try? JSONDecoder().decode([Collection].self, from: data)) ?? []
-        }
-        set { defaults?.set(try? JSONEncoder().encode(newValue), forKey: collectionsKey) }
+        get { collections(forKey: collectionsKey) }
+        set { setCollections(newValue, forKey: collectionsKey) }
+    }
+
+    /// Every album and photo set, so Edit Widget can offer them all, not only the ones already copied in.
+    static var catalog: [Collection] {
+        get { collections(forKey: "catalog") }
+        set { setCollections(newValue, forKey: "catalog") }
+    }
+
+    /// Picked in Edit Widget before their photos were copied in; the app copies them the next time it's open.
+    static var requested: [Collection] {
+        get { collections(forKey: "requested") }
+        set { setCollections(newValue, forKey: "requested") }
+    }
+
+    static func request(_ collection: Collection) {
+        guard !requested.contains(where: { $0.id == collection.id }) else { return }
+        requested.append(collection)
+    }
+
+    private static func collections(forKey key: String) -> [Collection] {
+        guard let data = defaults?.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([Collection].self, from: data)) ?? []
+    }
+
+    private static func setCollections(_ collections: [Collection], forKey key: String) {
+        defaults?.set(try? JSONEncoder().encode(collections), forKey: key)
     }
 
     static func folder(for source: Source) -> URL? { folder(named: source.rawValue) }

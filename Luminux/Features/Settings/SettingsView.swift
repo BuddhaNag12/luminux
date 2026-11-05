@@ -7,7 +7,6 @@ struct SettingsView: View {
     @Environment(AdConsent.self) private var adConsent
     @Environment(\.metro) private var metro
     @State private var showsTour = false
-    @State private var showsBackgroundPicker = false
     @Environment(PhotoLibrary.self) private var library
     @Environment(HubTiles.self) private var hubTiles
 
@@ -25,9 +24,6 @@ struct SettingsView: View {
         }
         .foregroundStyle(metro.foreground)
         .background(metro.background)
-        .sheet(isPresented: $showsBackgroundPicker) {
-            BackgroundPicker().environment(\.metro, metro)
-        }
         .fullScreenCover(isPresented: $showsTour) {
             OnboardingView(isReplay: true) { showsTour = false }
         }
@@ -94,7 +90,7 @@ struct SettingsView: View {
             .metroFeather(row: 4)
         if settings.showsHubBackground {
             link("background from", detail: BackgroundPicker.name(for: BackgroundPicker.current(settings, store: store), library: library, hubTiles: hubTiles)) {
-                showsBackgroundPicker = true
+                navigator.push(.backgroundPicker)
             }
             .metroFeather(row: 5)
             .padding(.top, 20)
@@ -112,9 +108,16 @@ struct SettingsView: View {
                 .metroFeather(row: 2)
                 .padding(.top, 14)
         }
-        Segments(label: "page animation", options: PageTransition.allCases, selection: $settings.pageTransition)
+        toggleRow("page animation",
+                  caption: settings.animatesPages ? settings.pageTransition.summary : "Pages swap with a quick fade.",
+                  isOn: $settings.animatesPages)
             .metroFeather(row: 3)
             .padding(.top, 32)
+        if settings.animatesPages {
+            Segments(label: "page animation", options: PageTransition.allCases, selection: $settings.pageTransition)
+                .metroFeather(row: 3)
+                .padding(.top, 14)
+        }
         toggleRow("live tiles",
                   caption: "Photo tiles flip to a new picture every few seconds. Off, they change each time you come back to the hub.",
                   isOn: $settings.animatesLiveTiles)
@@ -136,6 +139,9 @@ struct SettingsView: View {
                 }
             }
         }
+            .metroFeather(row: 5)
+            .padding(.top, 32)
+        link("widget collections", detail: widgetDetail) { navigator.push(.widgetCollections) }
             .metroFeather(row: 5)
             .padding(.top, 32)
         toggleRow("live photos",
@@ -274,6 +280,14 @@ struct SettingsView: View {
             }
         }
         .toggleStyle(MetroToggleStyle())
+    }
+
+    private var widgetDetail: String {
+        switch LiveTileStore.collections.count {
+        case 0: "Albums and photo sets the Photos widget can show"
+        case 1: "1 album or photo set on the widget"
+        case let count: "\(count) albums and photo sets on the widget"
+        }
     }
 
     private func link(_ title: String, detail: String, action: @escaping () -> Void) -> some View {

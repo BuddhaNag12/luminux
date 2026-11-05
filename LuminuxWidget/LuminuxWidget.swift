@@ -59,11 +59,17 @@ struct TileCollectionEntity: AppEntity {
 
 struct TileCollectionQuery: EntityQuery {
     func entities(for identifiers: [String]) async throws -> [TileCollectionEntity] {
-        LiveTileStore.collections.filter { identifiers.contains($0.id) }.map(TileCollectionEntity.init)
+        Self.choices.filter { identifiers.contains($0.id) }.map(TileCollectionEntity.init)
     }
 
     func suggestedEntities() async throws -> [TileCollectionEntity] {
-        LiveTileStore.collections.map(TileCollectionEntity.init)
+        Self.choices.map(TileCollectionEntity.init)
+    }
+
+    /// Every album and photo set in Luminux, plus any already copied in that the list doesn't have yet.
+    private static var choices: [LiveTileStore.Collection] {
+        let catalog = LiveTileStore.catalog
+        return catalog + LiveTileStore.collections.filter { stored in !catalog.contains { $0.id == stored.id } }
     }
 }
 
@@ -94,6 +100,14 @@ struct TileConfigurationIntent: WidgetConfigurationIntent {
         return LiveTileStore.collections.first { $0.id == id }
     }
 
+    /// Picked here, but the app hasn't copied its photos in yet.
+    var waitingCollection: LiveTileStore.Collection? {
+        // Gone from the app's list: deleted since, so there's nothing to wait for.
+        guard source == .collection, storedCollection == nil, let collection,
+              LiveTileStore.catalog.contains(where: { $0.id == collection.id }) else { return nil }
+        return LiveTileStore.Collection(id: collection.id, title: collection.title)
+    }
+
     var imageURLs: [URL] {
         switch source {
         case .recent: LiveTileStore.imageURLs(for: .recent)
@@ -106,18 +120,21 @@ struct TileConfigurationIntent: WidgetConfigurationIntent {
         switch source {
         case .recent: "photos"
         case .favorites: "favorites"
-        case .collection: storedCollection?.title.lowercased() ?? "collection"
+        case .collection: (storedCollection?.title ?? collection?.title)?.lowercased() ?? "collection"
         }
     }
 
     /// Opens what the tile shows: the album or photo set, or the hub.
     var url: URL? {
-        guard let id = storedCollection?.id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+        guard let id = (storedCollection ?? waitingCollection)?.id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
             return URL(string: "luminux://hub")
         }
         return URL(string: "luminux://collection?id=\(id)")
     }
 }
+
+/// How a StandBy photo changes, picked at random each time like the hub's live tiles.
+enum TileEffect: CaseIterable { case flip, slide, zoom }
 
 struct TileEntry: TimelineEntry {
     var date: Date
@@ -134,11 +151,19 @@ struct TileEntry: TimelineEntry {
     var url: URL? = URL(string: "luminux://hub")
     /// "A collection" is picked but none is chosen yet, or it was removed in the app.
     var needsCollection = false
+    /// The chosen collection's photos aren't copied in yet; opening the app does it.
+    var isWaitingForApp = false
     /// Pro and switched on in settings; otherwise StandBy shows the plain one-photo tile.
     var showsStandBy = false
     var style: TileStyle = .shuffle
     /// A peek step: the photos slide up to show what the tile is.
     var isPeeking = false
+    /// How this entry's changed photo comes in (StandBy).
+    var effect = TileEffect.slide
+    /// How the next entry's photo will come in. A leaving photo keeps the transition it was last drawn with, so the
+    /// way out has to be known an entry ahead to match the way in.
+    var exitEffect = TileEffect.slide
+    var exitSide = TileShuffle.Side.bottom
 }
 
 struct TileProvider: AppIntentTimelineProvider {
@@ -176,6 +201,7 @@ struct TileProvider: AppIntentTimelineProvider {
     /// shortcut: 5-second entries are an experiment; if iOS skips them, blanks the tile or stops after its daily
     /// reload budget, go back to minutes.
     func timeline(for configuration: TileConfigurationIntent, in context: Context) async -> Timeline<TileEntry> {
+        if let waiting = configuration.waitingCollection { LiveTileStore.request(waiting) }
         let urls = configuration.imageURLs
         guard urls.count > 1 else {
             return Timeline(entries: [entry(for: configuration, at: .now, order: urls)], policy: .after(.now.addingTimeInterval(3600)))
@@ -184,11 +210,18 @@ struct TileProvider: AppIntentTimelineProvider {
         // A peek after every third change: three quarters of the entries change a photo.
         let count = isPeek ? Self.entriesPerTimeline * 3 / 4 : Self.entriesPerTimeline
         let steps = TileShuffle.steps(pool: urls, slots: Self.slots(for: context.family, style: configuration.style), count: count)
-        var entries = steps.map { step in
+        let effects = steps.map { _ in TileEffect.allCases.randomElement()! }
+        var entries = steps.indices.map { index in
+            let step = steps[index]
             var entry = entry(for: configuration, at: .now, order: step.slots)
             entry.side = step.side
             entry.generations = step.generations
             entry.changed = step.changed
+            entry.effect = effects[index]
+            if index + 1 < steps.count {
+                entry.exitEffect = effects[index + 1]
+                entry.exitSide = steps[index + 1].side
+            }
             return entry
         }
         if isPeek { entries = TileShuffle.withPeeks(entries, every: 3) { $0.isPeeking = true } }
@@ -210,7 +243,8 @@ struct TileProvider: AppIntentTimelineProvider {
             title: configuration.tileTitle,
             isPro: LiveTileStore.unlocksWideTiles,
             url: configuration.url,
-            needsCollection: configuration.source == .collection && configuration.storedCollection == nil,
+            needsCollection: configuration.source == .collection && configuration.storedCollection == nil && configuration.waitingCollection == nil,
+            isWaitingForApp: configuration.waitingCollection != nil,
             showsStandBy: LiveTileStore.showsStandBy && LiveTileStore.unlocksWideTiles,
             style: configuration.style
         )
@@ -254,7 +288,7 @@ struct TileView: View {
 
     /// Photos sit on near-black, so the gaps between them read as a dark frame rather than lines of accent colour;
     /// the accent stays behind the lock and empty faces.
-    private var showsPhotos: Bool { !isLocked && !entry.needsCollection && !entry.imageURLs.isEmpty }
+    private var showsPhotos: Bool { !isLocked && !entry.needsCollection && !entry.isWaitingForApp && !entry.imageURLs.isEmpty }
 
     /// Text on the accent: black on the light accents, white on the rest.
     private var onAccent: Color { AccentContrast.needsDarkText(entry.accentHex) ? .black : .white }
@@ -333,9 +367,11 @@ struct TileView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    private var isStandBy: Bool { family == .systemSmall && !showsBackground && showsPhotos && entry.showsStandBy }
+
     @ViewBuilder
     private var tile: some View {
-        if family == .systemSmall && !showsBackground && showsPhotos && entry.showsStandBy {
+        if isStandBy {
             standBy
         } else if entry.style == .peek && showsPhotos {
             peekingTile
@@ -400,8 +436,8 @@ struct TileView: View {
 
     private var homeTile: some View {
         ZStack(alignment: .bottomLeading) {
-            if entry.needsCollection {
-                Text("Touch and hold, then Edit Widget to choose a collection.")
+            if entry.needsCollection || entry.isWaitingForApp {
+                Text(entry.isWaitingForApp ? "Open Luminux once to get these photos ready." : "Touch and hold, then Edit Widget to choose a collection.")
                     .font(.custom("Selawik-Semilight", size: 15))
                     .foregroundStyle(onAccent)
                     .padding(12)
@@ -502,6 +538,9 @@ struct TileView: View {
     }
 
     private var transition: AnyTransition {
+        if isStandBy {
+            return .asymmetric(insertion: Self.hubInsertion(entry.effect, from: entry.side), removal: Self.hubRemoval(entry.exitEffect, toward: entry.exitSide.opposite))
+        }
         guard entry.style == .flip else {
             return .asymmetric(insertion: .move(edge: entry.side.edge), removal: .scale(scale: 0.9).combined(with: .opacity))
         }
@@ -510,6 +549,30 @@ struct TileView: View {
             insertion: .modifier(active: FlipFace(angle: -90), identity: FlipFace(angle: 0)).animation(.easeOut(duration: 0.3).delay(0.25)),
             removal: .modifier(active: FlipFace(angle: 90), identity: FlipFace(angle: 0)).animation(.easeIn(duration: 0.25))
         )
+    }
+}
+
+extension TileView {
+    /// The hub's slide: comes in fast and settles slowly.
+    private static let slide = Animation.timingCurve(0.2, 0.8, 0.1, 1, duration: 0.85)
+
+    /// The hub's live tile changes (LiveTile in the app), as transitions. Flip: the old photo turns away, then the
+    /// new one turns in. Slide: the new photo pushes the old one out the other side. Zoom: the old photo grows toward
+    /// you and fades as the new one fades in.
+    static func hubInsertion(_ effect: TileEffect, from side: TileShuffle.Side) -> AnyTransition {
+        switch effect {
+        case .flip: .modifier(active: FlipFace(angle: -90), identity: FlipFace(angle: 0)).animation(.easeOut(duration: 0.24).delay(0.18))
+        case .slide: .move(edge: side.edge).animation(slide)
+        case .zoom: .opacity.animation(.easeIn(duration: 0.36).delay(0.54))
+        }
+    }
+
+    static func hubRemoval(_ effect: TileEffect, toward side: TileShuffle.Side) -> AnyTransition {
+        switch effect {
+        case .flip: .modifier(active: FlipFace(angle: 90), identity: FlipFace(angle: 0)).animation(.easeIn(duration: 0.18))
+        case .slide: .move(edge: side.edge).animation(slide)
+        case .zoom: .scale(scale: 1.3).combined(with: .opacity).animation(.easeIn(duration: 0.9))
+        }
     }
 }
 
@@ -525,6 +588,15 @@ private struct FlipFace: ViewModifier {
 }
 
 extension TileShuffle.Side {
+    var opposite: Self {
+        switch self {
+        case .top: .bottom
+        case .bottom: .top
+        case .leading: .trailing
+        case .trailing: .leading
+        }
+    }
+
     var edge: Edge {
         switch self {
         case .top: .top

@@ -22,6 +22,7 @@ struct HubView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ProStore.self) private var store
     @Environment(Journal.self) private var journal
+    @Environment(HubTiles.self) private var hubTiles
     @Environment(NewsFeed.self) private var news
     @Environment(NewsAds.self) private var ads
     @Environment(\.metro) private var metro
@@ -34,6 +35,9 @@ struct HubView: View {
     @State private var selectedTile: HubTileKind?
     /// The collection panel is the one on screen; its live tiles stop while another panel is.
     @State private var isOnCollection = true
+    /// The collection panel shows its first tiles until "see all" is tapped.
+    @State private var showsAllTiles = false
+    private static let tileLimit = 8
 
     /// Motion runs only while the hub is on screen.
     private var tracksTilt: Bool {
@@ -59,11 +63,11 @@ struct HubView: View {
             }
             PanoramaSection("collection") { collection }
             PanoramaSection("what's new") {
-                photoGrid(.recent, limit: 30, empty: "No photos from the last 30 days.")
+                photoGrid(.recent, limit: 30, empty: "No photos from the last 30 days.", seeAll: .collection(page: 0))
             }
             PanoramaSection("journal") { journalPanel }
             PanoramaSection("favorites") {
-                photoGrid(.favorites, limit: 30, empty: "No favorites yet. Tap the heart on a photo to add it here.")
+                photoGrid(.favorites, limit: 30, empty: "No favorites yet. Tap the heart on a photo to add it here.", seeAll: .collection(page: CollectionView.favoritesPage))
             }
             if !store.isUnlocked {
                 PanoramaSection("pro") {
@@ -106,6 +110,9 @@ struct HubView: View {
             AppBarMenuItem(title: "customize tiles") {
                 withAnimation(MetroMotion.standard) { isEditingTiles = true }
             },
+            AppBarMenuItem(title: "reset tiles") {
+                withAnimation(MetroMotion.standard) { hubTiles.resetLayout() }
+            },
             AppBarMenuItem(title: "settings") { navigator.push(.settings) },
         ]
         if library.access == .limited {
@@ -116,12 +123,18 @@ struct HubView: View {
 
     private var collection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HubTileGrid(isEditing: $isEditingTiles, selected: $selectedTile)
+            HubTileGrid(isEditing: $isEditingTiles, selected: $selectedTile, limit: showsAllTiles || isEditingTiles ? nil : Self.tileLimit)
                 // No wider than on the largest iPhone, so tiles keep their size on iPhone Duo's wide open screen.
                 .frame(maxWidth: 384, alignment: .leading)
                 .padding(.trailing, MetroMetrics.margin)
                 // The tiles drift against the background, so they seem to float above it.
                 .tiltParallax(-8 * settings.tiltStrength.scale)
+
+            // Opens the rest in place: photo sets live only on this panel, so there's no other page to send you to.
+            if hubTiles.tiles.count > Self.tileLimit && !showsAllTiles && !isEditingTiles {
+                Button("see all") { withAnimation(MetroMotion.standard) { showsAllTiles = true } }
+                    .buttonStyle(.metro)
+            }
 
             if library.access == .limited {
                 VStack(alignment: .leading, spacing: 12) {
@@ -170,7 +183,7 @@ struct HubView: View {
     }
 
     @ViewBuilder
-    private func photoGrid(_ source: AssetSource, limit: Int, empty: String) -> some View {
+    private func photoGrid(_ source: AssetSource, limit: Int, empty: String, seeAll: Route) -> some View {
         let items = library.assets(in: source).items(limit: limit)
         if items.isEmpty && library.isLoaded {
             Text(empty)
@@ -178,17 +191,25 @@ struct HubView: View {
                 .foregroundStyle(metro.secondary)
                 .padding(.trailing, MetroMetrics.margin)
         } else {
-            LazyVGrid(columns: photoColumns, spacing: MetroMetrics.gutter) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    Button {
-                        navigator.openViewer(source, at: item.id, index: index)
-                    } label: {
-                        AssetThumbnail(asset: item.asset, pixelSide: 120 * displayScale)
-                            .aspectRatio(1, contentMode: .fit)
+            VStack(alignment: .leading, spacing: 24) {
+                LazyVGrid(columns: photoColumns, spacing: MetroMetrics.gutter) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        Button {
+                            navigator.openViewer(source, at: item.id, index: index)
+                        } label: {
+                            AssetThumbnail(asset: item.asset, pixelSide: 120 * displayScale)
+                                .aspectRatio(1, contentMode: .fit)
+                        }
+                        .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
+                        .metroFeather(row: 2 + index / 3, column: index % 3)
+                        .zoomSource(id: item.id)
                     }
-                    .buttonStyle(TiltButtonStyle(touch: nil, size: .zero))
-                    .metroFeather(row: 2 + index / 3, column: index % 3)
-                    .zoomSource(id: item.id)
+                }
+                // Only when there's more than the panel holds.
+                if items.count >= limit {
+                    Button("see all") { navigator.push(seeAll) }
+                        .buttonStyle(.metro)
+                        .metroFeather(row: 2 + (items.count + 2) / 3)
                 }
             }
             .padding(.trailing, MetroMetrics.margin)

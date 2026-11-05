@@ -241,7 +241,7 @@ final class Journal {
         points.reserveCapacity(result.count)
         result.enumerateObjects { asset, _, _ in
             // Filtered here, not in the fetch: iOS 27 matches almost nothing for a bitwise `mediaSubtypes` predicate.
-            guard !asset.mediaSubtypes.contains(.photoScreenshot), let date = asset.creationDate else { return }
+            guard isFromCamera(asset), let date = asset.creationDate else { return }
             points.append(PhotoPoint(
                 id: asset.localIdentifier,
                 date: date,
@@ -250,6 +250,23 @@ final class Journal {
             ))
         }
         return points
+    }
+
+    /// Photos the phone's camera took, not downloads, screenshots or edits saved out as new photos. PhotoKit doesn't
+    /// say which app made a photo, so this looks for what only a camera leaves: a location, a burst, or a Live, HDR,
+    /// portrait, panorama, slow-mo, time-lapse or cinematic capture.
+    /// shortcut: a camera shot with Live Photos and location both off is left out; read EXIF Make if that matters.
+    nonisolated static func isFromCamera(_ asset: PHAsset) -> Bool {
+        isFromCamera(subtypes: asset.mediaSubtypes, hasLocation: asset.location != nil, isBurst: asset.burstIdentifier != nil)
+    }
+
+    nonisolated static func isFromCamera(subtypes: PHAssetMediaSubtype, hasLocation: Bool, isBurst: Bool) -> Bool {
+        if subtypes.contains(.photoScreenshot) { return false }
+        let cameraOnly: PHAssetMediaSubtype = [
+            .photoLive, .photoHDR, .photoDepthEffect, .photoPanorama,
+            .videoHighFrameRate, .videoTimelapse, .videoCinematic,
+        ]
+        return hasLocation || isBurst || !subtypes.isDisjoint(with: cameraOnly)
     }
 }
 
