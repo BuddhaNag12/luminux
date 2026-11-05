@@ -19,6 +19,7 @@ final class AppSettings {
         static let tiltStrength = "tiltStrength"
         static let hasSeenOnboarding = "hasSeenOnboarding"
         static let pageTransition = "pageTransition"
+        static let animatesPages = "animatesPages"
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -83,6 +84,11 @@ final class AppSettings {
         didSet { defaults.set(pageTransition.rawValue, forKey: Key.pageTransition) }
     }
 
+    /// Off, pages swap with a quick fade instead of turning or zooming.
+    var animatesPages: Bool {
+        didSet { defaults.set(animatesPages, forKey: Key.animatesPages) }
+    }
+
     /// The first-launch tour has been shown (finished or skipped to the end).
     var hasSeenOnboarding: Bool {
         didSet { defaults.set(hasSeenOnboarding, forKey: Key.hasSeenOnboarding) }
@@ -105,7 +111,8 @@ final class AppSettings {
         namesJournalPlaces = defaults.object(forKey: Key.namesJournalPlaces) as? Bool ?? true
         tiltStrength = defaults.string(forKey: Key.tiltStrength).flatMap(TiltStrength.init) ?? .medium
         hasSeenOnboarding = defaults.bool(forKey: Key.hasSeenOnboarding)
-        pageTransition = defaults.string(forKey: Key.pageTransition).flatMap(PageTransition.init) ?? .zoom
+        pageTransition = defaults.string(forKey: Key.pageTransition).flatMap(PageTransition.init) ?? .turnstile
+        animatesPages = defaults.object(forKey: Key.animatesPages) as? Bool ?? true
     }
 }
 
@@ -115,6 +122,13 @@ nonisolated enum PageTransition: String, CaseIterable, Identifiable, Sendable {
     case turnstile, zoom
 
     var id: String { rawValue }
+
+    var summary: String {
+        switch self {
+        case .turnstile: "Each line of a page swings in from the left edge in turn, like Windows Phone."
+        case .zoom: "The page you leave scatters outward, then the next one grows into place, like Windows 10 Mobile."
+        }
+    }
 }
 
 /// How far the hub moves with the phone; high is the strongest the effect goes.

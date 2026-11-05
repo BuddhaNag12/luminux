@@ -63,8 +63,9 @@ final class HubTiles {
     /// Albums and photo sets pinned without Pro; Pro pins as many as you like.
     static let freePinLimit = 2
 
+    /// Camera roll big across the top, albums under it with the date on its right, then favorites and places.
     static let defaultTiles: [HubTile] = [
-        HubTile(kind: .cameraRoll), HubTile(kind: .albums), HubTile(kind: .date), HubTile(kind: .favorites),
+        HubTile(kind: .cameraRoll, size: .wide), HubTile(kind: .albums), HubTile(kind: .date), HubTile(kind: .favorites),
         HubTile(kind: .places),
     ]
 
@@ -140,6 +141,12 @@ final class HubTiles {
         guard let from = tiles.firstIndex(where: { $0.kind == kind }) else { return }
         let tile = tiles.remove(at: from)
         tiles.insert(tile, at: min(max(index, 0), tiles.count))
+        save()
+    }
+
+    /// Puts the built-in tiles back in their default places and sizes; pinned albums and sets follow, as they were.
+    func resetLayout() {
+        tiles = Self.defaultTiles + tiles.filter { !$0.kind.isBuiltIn }
         save()
     }
 

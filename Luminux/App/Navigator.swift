@@ -10,6 +10,8 @@ enum Route: Hashable {
     case journalEntry(String)
     case photoSet(String)
     case place(String)
+    case backgroundPicker
+    case widgetCollections
 }
 
 struct ViewerRequest: Identifiable, Hashable {
@@ -30,6 +32,8 @@ final class Navigator {
     var viewerCurrentID: String?
     /// The top page's tiles are swinging out before `pop()` removes it.
     private(set) var isLeaving = false
+    /// The "page animation" setting; off, pages go without waiting for their items to move away.
+    var animatesPages = true
 
     func push(_ route: Route) {
         withAnimation(MetroMotion.standard) { path.append(route) }
@@ -37,7 +41,7 @@ final class Navigator {
 
     func pop() {
         guard !path.isEmpty, !isLeaving else { return }
-        guard !UIAccessibility.isReduceMotionEnabled else {
+        guard !UIAccessibility.isReduceMotionEnabled, animatesPages else {
             withAnimation(MetroMotion.standard) { _ = path.removeLast() }
             return
         }
@@ -98,7 +102,7 @@ struct MetroStack<Root: View, Destination: View>: View {
 
     @Environment(Navigator.self) private var navigator
     @Environment(AppSettings.self) private var settings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.isLaunchSplashShowing) private var isSplashShowing
     @State private var backProgress: CGFloat = 0
     @State private var width: CGFloat = 1
@@ -130,6 +134,8 @@ struct MetroStack<Root: View, Destination: View>: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = max($0, 1) }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = max($0, 1) }
         .environment(\.featherStyle, zooms ? .zoom : .turnstile)
+        .environment(\.animatesPages, settings.animatesPages)
+        .onChange(of: settings.animatesPages, initial: true) { _, animates in navigator.animatesPages = animates }
         .onChange(of: navigator.path.count, initial: true) { old, count in
             guard zooms, count > old else { return enteredDepth = count }
             Task {
@@ -150,6 +156,8 @@ struct MetroStack<Root: View, Destination: View>: View {
     }
 
     private var zooms: Bool { settings.pageTransition == .zoom && !reduceMotion }
+    /// Reduce Motion, or page animation switched off in settings.
+    private var reduceMotion: Bool { systemReduceMotion || !settings.animatesPages }
 
     /// A page opening grows from this, and one closing shrinks back to it.
     private static var zoomedIn: CGFloat { 0.9 }

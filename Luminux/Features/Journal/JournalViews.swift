@@ -212,7 +212,8 @@ struct JournalEntryView: View {
         } message: {
             Text("Leave it empty to go back to the automatic title.")
         }
-        .sheet(isPresented: $isEditingNote) {
+        // Full screen, not a sheet: a sheet shrinks the page behind it and slid the entry's title up under the notch.
+        .fullScreenCover(isPresented: $isEditingNote) {
             if let entry {
                 JournalNoteEditor(entry: entry)
             }
@@ -333,7 +334,6 @@ struct JournalNoteEditor: View {
         .onTapGesture { isFocused = false }
         .foregroundStyle(metro.foreground)
         .background(metro.background)
-        .presentationDetents([.large])
         .onAppear { text = journal.note(for: entry) ?? "" }
         .task {
             // Focus once the sheet has settled, so the keyboard doesn't come up mid-presentation.

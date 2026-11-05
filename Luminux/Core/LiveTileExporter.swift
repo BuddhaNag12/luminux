@@ -9,6 +9,7 @@ enum LiveTileExporter {
 
     static func export(from library: PhotoLibrary, hubTiles: HubTiles, accent: Accent) async {
         LiveTileStore.accentHex = accent.hex
+        publishCatalog(library: library, hubTiles: hubTiles)
         for source in LiveTileStore.Source.allCases {
             let assets = source == .recent ? library.allAssets : library.favorites
             // Recent stays the newest photos; favorites shuffle like collections do.
@@ -41,6 +42,22 @@ enum LiveTileExporter {
         try? LiveTileStore.replaceImages(await jpegs(from: assets, shuffled: true), for: stored)
         LiveTileStore.collections = LiveTileStore.collections.filter { $0.id != stored.id } + [stored]
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Lists every album and photo set for Edit Widget's collection picker.
+    static func publishCatalog(library: PhotoLibrary, hubTiles: HubTiles) {
+        LiveTileStore.catalog = library.albums.map { .album($0.id, title: $0.title) }
+            + hubTiles.photoSets.values.sorted { $0.title < $1.title }.map { .photoSet($0.id, title: $0.title) }
+    }
+
+    /// Copies in the collections someone picked in Edit Widget before their photos were ready.
+    static func addRequested(library: PhotoLibrary, hubTiles: HubTiles) async {
+        let requested = LiveTileStore.requested
+        guard !requested.isEmpty else { return }
+        LiveTileStore.requested = []
+        for collection in requested where !contains(collection.id) {
+            await add(collection, library: library, hubTiles: hubTiles)
+        }
     }
 
     static func remove(_ id: String) {

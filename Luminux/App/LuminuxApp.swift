@@ -91,6 +91,7 @@ private struct AppShell: View {
     @Environment(ProStore.self) private var store
     @Environment(Journal.self) private var journal
     @Environment(HubTiles.self) private var hubTiles
+    @Environment(\.scenePhase) private var scenePhase
     @Namespace private var zoom
     @State private var hinge = Hinge()
 
@@ -119,6 +120,10 @@ private struct AppShell: View {
                 PhotoSetView(setID: id)
             case .place(let id):
                 PlaceView(placeID: id)
+            case .backgroundPicker:
+                BackgroundPicker()
+            case .widgetCollections:
+                WidgetCollectionsPicker()
             }
         }
         .environment(\.zoomNamespace, zoom)
@@ -166,6 +171,13 @@ private struct AppShell: View {
             guard !pinned.isEmpty else { return }
             hubTiles.prune(albumIDs: PhotoLibrary.existingAlbumIDs(pinned))
         }
+        .task(id: WidgetCatalogKey(phase: scenePhase, isLoaded: library.isLoaded, albums: library.albums.count, sets: hubTiles.photoSets.count)) {
+            // Kept current as the app comes and goes, so Edit Widget lists what's in Luminux now; anything picked
+            // there before its photos were copied in gets them now.
+            guard library.isLoaded else { return }
+            LiveTileExporter.publishCatalog(library: library, hubTiles: hubTiles)
+            if scenePhase == .active { await LiveTileExporter.addRequested(library: library, hubTiles: hubTiles) }
+        }
         .onChange(of: settings.showsStandBy, initial: true) { _, shows in
             guard LiveTileStore.showsStandBy != shows else { return }
             LiveTileStore.showsStandBy = shows
@@ -188,6 +200,13 @@ private struct AppShell: View {
 private struct JournalRefreshKey: Equatable {
     let changeToken: Int
     let namesPlaces: Bool
+}
+
+private struct WidgetCatalogKey: Equatable {
+    let phase: ScenePhase
+    let isLoaded: Bool
+    let albums: Int
+    let sets: Int
 }
 
 private struct TileRefreshKey: Equatable {

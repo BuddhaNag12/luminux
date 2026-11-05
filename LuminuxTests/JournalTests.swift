@@ -1,4 +1,5 @@
 import Foundation
+import Photos
 import Testing
 @testable import Luminux
 
@@ -133,5 +134,14 @@ struct JournalTests {
 
         let found = JournalBuilder.homePlace(of: points, calendar: Self.calendar)
         #expect(found.map { $0.distance(to: home) < 1000 } == true)
+    }
+
+    @Test func onlyCameraPhotosMakeTheJournal() {
+        // A download or a saved-out edit: no location, nothing only a camera makes.
+        #expect(!Journal.isFromCamera(subtypes: [], hasLocation: false, isBurst: false))
+        #expect(!Journal.isFromCamera(subtypes: .photoScreenshot, hasLocation: true, isBurst: false))
+        #expect(Journal.isFromCamera(subtypes: [], hasLocation: true, isBurst: false))
+        #expect(Journal.isFromCamera(subtypes: .photoLive, hasLocation: false, isBurst: false))
+        #expect(Journal.isFromCamera(subtypes: [], hasLocation: false, isBurst: true))
     }
 }

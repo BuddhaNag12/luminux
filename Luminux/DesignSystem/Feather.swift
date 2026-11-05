@@ -102,6 +102,8 @@ nonisolated enum FeatherStyle: Sendable {
 
 extension EnvironmentValues {
     @Entry var featherStyle = FeatherStyle.turnstile
+    /// Off in settings: items stay put, as with Reduce Motion, but only for page changes.
+    @Entry var animatesPages = true
     /// The screen the items scatter from the centre of.
     @Entry var featherScreen = CGSize.zero
     /// Items opening come forward from behind the screen instead of turning in (the first page, as the app starts).
@@ -135,11 +137,14 @@ private struct FeatherScope: ViewModifier {
     var restingState: FeatherState
 
     @Environment(\.featherStyle) private var featherStyle
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.animatesPages) private var animatesPages
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var context = FeatherContext(state: .below, previous: .below)
     @State private var hasAppeared = false
     @State private var lastSizeClass: UserInterfaceSizeClass?
+
+    private var reduceMotion: Bool { systemReduceMotion || !animatesPages }
 
     func body(content: Content) -> some View {
         content

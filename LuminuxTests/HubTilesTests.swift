@@ -11,8 +11,20 @@ struct HubTilesTests {
         let tiles = HubTiles(storeURL: nil)
 
         #expect(tiles.tiles.map(\.kind) == [.cameraRoll, .albums, .date, .favorites, .places])
-        #expect(tiles.tiles.allSatisfy { $0.size == .medium })
+        #expect(tiles.tiles.map(\.size) == [.wide, .medium, .medium, .medium, .medium])
         #expect(tiles.pinCount == 0)
+    }
+
+    @Test func resetPutsBuiltInsBackAndKeepsPins() {
+        let tiles = HubTiles(storeURL: nil)
+        tiles.pinAlbum("a")
+        tiles.move(.date, to: 5)
+        tiles.resize(.cameraRoll)
+
+        tiles.resetLayout()
+
+        #expect(tiles.tiles.map(\.kind) == [.cameraRoll, .albums, .date, .favorites, .places, .album("a")])
+        #expect(tiles.tiles.first?.size == .wide)
     }
 
     @Test func freeUsersPinTwoThenPro() {
