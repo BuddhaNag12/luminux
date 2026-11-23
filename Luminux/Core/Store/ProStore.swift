@@ -50,7 +50,8 @@ final class ProStore {
         await checkEntitlement()
     }
 
-    private func checkEntitlement() async {
+    /// Checks the purchase without loading the product; a fresh install doesn't know about an earlier purchase until this runs.
+    func checkEntitlement() async {
         var unlocked = false
         for await result in StoreKit.Transaction.currentEntitlements {
             if case .verified(let transaction) = result, transaction.productID == Self.productID, transaction.revocationDate == nil {

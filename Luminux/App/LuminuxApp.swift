@@ -81,7 +81,11 @@ struct RootView: View {
                     settings.hasSeenOnboarding = true
                     forcesOnboarding = false
                 }
-                showsProOffer = !store.isUnlocked
+                // Ask the App Store first: a reinstall that already owns Pro would see the offer open and close itself.
+                Task {
+                    await store.checkEntitlement()
+                    showsProOffer = !store.isUnlocked
+                }
             }
         } else if library.access.canRead {
             AppShell()
