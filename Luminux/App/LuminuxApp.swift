@@ -44,7 +44,10 @@ struct LuminuxApp: App {
 struct RootView: View {
     @Environment(PhotoLibrary.self) private var library
     @Environment(AppSettings.self) private var settings
+    @Environment(ProStore.self) private var store
     @State private var forcesOnboarding = OnboardingView.isForced
+    /// The Pro offer, shown once as the tour ends.
+    @State private var showsProOffer = false
     /// The launch animation plays once per launch, over whatever opens first.
     @State private var showsSplash = true
 
@@ -66,6 +69,9 @@ struct RootView: View {
                 LaunchSplash { showsSplash = false }
             }
         }
+        .fullScreenCover(isPresented: $showsProOffer) {
+            ProPaywall { showsProOffer = false }
+        }
     }
 
     @ViewBuilder private var content: some View {
@@ -75,6 +81,7 @@ struct RootView: View {
                     settings.hasSeenOnboarding = true
                     forcesOnboarding = false
                 }
+                showsProOffer = !store.isUnlocked
             }
         } else if library.access.canRead {
             AppShell()

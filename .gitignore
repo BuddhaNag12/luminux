@@ -11,3 +11,5 @@ Luminux.xcodeproj/project.xcworkspace/contents.xcworkspacedata
 # Mockups and progress screenshots stay local
 Design/
 graphify-out
+# Local notes, not published
+docs/offer-codes.md

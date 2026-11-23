@@ -9,15 +9,17 @@ struct ProPitch: View {
     @Environment(ProStore.self) private var store
     @Environment(\.purchase) private var purchase
     @Environment(\.metro) private var metro
+    @State private var isRedeeming = false
 
-    private struct Perk: Identifiable {
+    struct Perk: Identifiable {
         let glyph: String
         let title: String
         let detail: String
         var id: String { title }
     }
 
-    private let perks = [
+    /// Also listed on the paywall after the tour (`ProPaywall`).
+    static let perks = [
         Perk(glyph: "play.slash", title: "no ads", detail: "Use every feature without watching an ad."),
         Perk(glyph: "paintpalette", title: "any accent colour", detail: "Pick your own accent, beyond the classic six."),
         Perk(glyph: "rectangle.split.2x1", title: "wide live tiles", detail: "Medium and large photo tiles for the home screen."),
@@ -47,7 +49,7 @@ struct ProPitch: View {
                     .metroFeather(row: firstRow + 1)
 
                 VStack(spacing: 0) {
-                    ForEach(Array(perks.enumerated()), id: \.element.id) { index, perk in
+                    ForEach(Array(Self.perks.enumerated()), id: \.element.id) { index, perk in
                         perkRow(perk, isFirst: index == 0)
                             .metroFeather(row: firstRow + 2 + index)
                     }
@@ -99,23 +101,53 @@ struct ProPitch: View {
             .padding(.top, 20)
             .accessibilityLabel(store.product.map { "Unlock Pro for \($0.displayPrice)" } ?? "Try loading Pro again")
 
-            Button {
-                Task { await store.restore() }
-            } label: {
-                Text("restore purchase")
-                    .font(.metro(15, .semilight))
-                    .underline()
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .contentShape(Rectangle())
+            // Side by side; stacked when large text doesn't fit on one line.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 0) { restoreLink; redeemLink }
+                VStack(spacing: 0) { restoreLink; redeemLink }
             }
-            .buttonStyle(.plain)
             .padding(.top, 4)
+            .offerCodeRedemption(isPresented: $isRedeeming) { _ in
+                // If the sheet couldn't open, this lets the next tap try again.
+                isRedeeming = false
+                // The transaction also arrives through `Transaction.updates`; this just doesn't wait for it.
+                Task { await store.refresh() }
+            }
         }
         .foregroundStyle(metro.onAccent)
         .padding(20)
         .padding(.bottom, -8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(metro.accentColor)
+    }
+
+    private var restoreLink: some View {
+        Button {
+            Task { await store.restore() }
+        } label: {
+            linkLabel("restore purchase")
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Offer codes from App Store Connect; custom codes can only be redeemed in the app or through a link.
+    private var redeemLink: some View {
+        Button {
+            isRedeeming = true
+        } label: {
+            linkLabel("redeem a code")
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func linkLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.metro(15, .semilight))
+            .underline()
+            .lineLimit(1)
+            .fixedSize()
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
     }
 
     private var unlockedCard: some View {
