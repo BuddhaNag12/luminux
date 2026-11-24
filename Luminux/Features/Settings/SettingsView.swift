@@ -178,7 +178,7 @@ struct SettingsView: View {
     // The same pages go in App Store Connect's Privacy Policy and Support URL fields.
     private static let privacyPolicyURL = URL(string: "https://github.com/BuddhaNag12/luminux/blob/main/docs/privacy.md")!
     private static let supportURL = URL(string: "https://github.com/BuddhaNag12/luminux/issues")!
-    private static let supportEmail = "buddhanag12@gmail.com"
+    private static let supportEmail = "apps.buddhanag@gmail.com"
     private static let supportMailURL = URL(string: "mailto:\(supportEmail)")!
 
     private func openInApp(_ url: URL) {
